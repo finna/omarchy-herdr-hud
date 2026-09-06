@@ -126,6 +126,19 @@ Item {
     focusedScreenProc.exec([bridgePath, "focused-screen"])
   }
 
+  function state(_arg) {
+    return JSON.stringify({
+      opened: opened,
+      panelScreenName: panelScreenName,
+      bridgePath: bridgePath,
+      screens: screenViews.instances.length,
+      agents: agents.length,
+      connected: connected,
+      selectedPane: selectedPane,
+      error: errorText
+    })
+  }
+
   function openOnScreen(name) {
     panelScreenName = name || defaultScreenName()
     opened = true
@@ -296,8 +309,10 @@ Item {
 
   Component.onCompleted: {
     mkdirProc.running = true
-    refreshRoster()
+    Qt.callLater(root.refreshRoster)
   }
+
+  onPluginDirChanged: if (pluginDir !== "") Qt.callLater(root.refreshRoster)
 
   Process {
     id: mkdirProc
@@ -371,7 +386,6 @@ Item {
     interval: 2000
     repeat: true
     running: true
-    triggeredOnStart: true
     onTriggered: root.refreshRoster()
   }
 
@@ -478,7 +492,7 @@ Item {
             Text {
               text: "HERDR"
               color: root.gold
-              font.family: Style.font.titleFamily
+              font.family: Style.font.family
               font.pixelSize: 25
               font.bold: true
             }
@@ -884,7 +898,7 @@ Item {
             anchors.centerIn: parent
             text: "H"
             color: root.gold
-            font.family: Style.font.titleFamily
+            font.family: Style.font.family
             font.pixelSize: 25
             font.bold: true
           }
