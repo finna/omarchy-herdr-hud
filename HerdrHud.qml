@@ -47,8 +47,8 @@ Item {
   readonly property color working: "#d5b46b"
   readonly property color gold: "#e8c67c"
   readonly property color muted: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.62)
-  readonly property color panelFill: alpha(background, 0.975)
-  readonly property color terminalFill: Qt.rgba(0.035, 0.045, 0.052, 0.985)
+  readonly property color panelFill: Qt.rgba(background.r, background.g, background.b, 1)
+  readonly property color terminalFill: Qt.rgba(0.035, 0.045, 0.052, 1)
   readonly property int edgeGap: 16
   readonly property int bubbleSize: 54
 
@@ -135,6 +135,8 @@ Item {
       agents: agents.length,
       connected: connected,
       selectedPane: selectedPane,
+      outputChars: outputText.length,
+      notice: noticeText,
       error: errorText
     })
   }
@@ -788,6 +790,8 @@ Item {
                 RowLayout {
                   Layout.fillWidth: true
                   Layout.preferredHeight: 86
+                  Layout.minimumHeight: 86
+                  Layout.maximumHeight: 86
                   spacing: 10
 
                   Rectangle {
