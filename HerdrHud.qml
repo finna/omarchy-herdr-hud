@@ -15,7 +15,7 @@ Item {
 
   readonly property string pluginId: (manifest && manifest.id) || "finna.herdr-hud"
   readonly property string pluginDir: (manifest && manifest.__sourceDir) || ""
-  readonly property string bridgePath: pluginDir + "/bin/herdr-hud"
+  readonly property string bridgePath: String(Qt.resolvedUrl("bin/herdr-hud")).replace(/^file:\/\//, "")
   readonly property string homeDir: Quickshell.env("HOME")
   readonly property string configDir: homeDir + "/.config/herdr-hud"
   readonly property string statePath: configDir + "/state.json"
@@ -311,8 +311,6 @@ Item {
     mkdirProc.running = true
     Qt.callLater(root.refreshRoster)
   }
-
-  onPluginDirChanged: if (pluginDir !== "") Qt.callLater(root.refreshRoster)
 
   Process {
     id: mkdirProc
