@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""Small, dependency-free bridge between Herdr HUD and the Herdr CLI."""
+
+from __future__ import annotations
+
+import json
+import shutil
+import subprocess
+import sys
+from typing import Any
+
+
+TIMEOUT = 12
+
+
+class BridgeError(RuntimeError):
+    pass
+
+
+def run(argv: list[str], timeout: int = TIMEOUT) -> str:
+    try:
+        result = subprocess.run(
+            argv,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except FileNotFoundError as error:
+        raise BridgeError(f"{argv[0]} is not installed") from error
+    except subprocess.TimeoutExpired as error:
+        raise BridgeError(f"{argv[0]} did not respond in time") from error
+    if result.returncode:
+        detail = result.stderr.strip() or result.stdout.strip()
+        raise BridgeError(detail or f"{argv[0]} exited with status {result.returncode}")
+    return result.stdout
+
+
+def herdr(*args: str) -> str:
+    if shutil.which("herdr") is None:
+        raise BridgeError("Herdr is not installed or is not on PATH")
+    return run(["herdr", *args])
+
+
+def response(payload: Any) -> None:
+    print(json.dumps(payload, ensure_ascii=False))
+
+
+def agents() -> list[dict[str, Any]]:
+    payload = json.loads(herdr("agent", "list"))
+    return payload.get("result", {}).get("agents", [])
+
+
+def roster() -> None:
+    rows = agents()
+    workspace_payload = json.loads(herdr("workspace", "list"))
+    spaces = workspace_payload.get("result", {}).get("workspaces", [])
+    labels = {
+        str(space.get("workspace_id", "")): (
+            space.get("label") or space.get("workspace_id") or "Untitled space"
+        )
+        for space in spaces
+    }
+    merged = []
+    for row in rows:
+        item = dict(row)
+        workspace_id = str(item.get("workspace_id", ""))
+        item["workspace_label"] = labels.get(workspace_id, workspace_id or "Untitled space")
+        merged.append(item)
+    response({"ok": True, "agents": merged})
+
+
+def output(pane_id: str) -> None:
+    text = herdr(
+        "agent",
+        "read",
+        pane_id,
+        "--source",
+        "recent-unwrapped",
+        "--lines",
+        "180",
+    )
+    sys.stdout.write(text)
+
+
+def prompt(pane_id: str, terminal_id: str, message: str) -> None:
+    current = next((row for row in agents() if row.get("pane_id") == pane_id), None)
+    if not current or current.get("terminal_id") != terminal_id:
+        raise BridgeError("This agent changed. Select it again before sending.")
+    if current.get("agent_status") not in {"idle", "done", "blocked"}:
+        raise BridgeError("Wait until this agent is ready before sending a prompt.")
+    if not message.strip():
+        raise BridgeError("Enter a prompt first.")
+    herdr("agent", "prompt", pane_id, message)
+    response({"ok": True})
+
+
+def focused_screen() -> None:
+    monitors = json.loads(run(["hyprctl", "monitors", "-j"], timeout=3))
+    focused = next((monitor for monitor in monitors if monitor.get("focused")), None)
+    if focused is None and monitors:
+        focused = monitors[0]
+    response({"ok": True, "screen": (focused or {}).get("name", "")})
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) < 2:
+        raise BridgeError("usage: herdr-hud roster|output|prompt|focused-screen")
+    command = argv[1]
+    if command == "roster" and len(argv) == 2:
+        roster()
+    elif command == "output" and len(argv) == 3:
+        output(argv[2])
+    elif command == "prompt" and len(argv) == 5:
+        prompt(argv[2], argv[3], argv[4])
+    elif command == "focused-screen" and len(argv) == 2:
+        focused_screen()
+    else:
+        raise BridgeError(f"invalid arguments for {command}")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main(sys.argv))
+    except (BridgeError, json.JSONDecodeError) as error:
+        print(str(error), file=sys.stderr)
+        raise SystemExit(1)
