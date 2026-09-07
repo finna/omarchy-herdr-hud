@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1
+
+- Keep the draggable H button visible above the open panel so it can also close the panel.
+
 ## 1.0.0
 
 - Native Omarchy panel with a draggable launcher and configurable keybind.

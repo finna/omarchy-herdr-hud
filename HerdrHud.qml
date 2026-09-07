@@ -980,7 +980,7 @@ Item {
 
       Item {
         id: bubble
-        visible: !overlayWindow.panelVisible
+        z: 1
         width: root.bubbleSize
         height: root.bubbleSize
         x: overlayWindow.bubbleX
