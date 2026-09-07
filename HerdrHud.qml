@@ -1177,8 +1177,17 @@ Item {
                       id: outputArea
                       width: outputScroll.width
                       height: Math.max(outputScroll.height, implicitHeight)
-                      text: root.formattedView ? root.chatHtml : root.outputText
-                      textFormat: root.formattedView ? TextEdit.RichText : TextEdit.PlainText
+                      property bool richOutput: root.formattedView
+                      property string outputContent: richOutput ? root.chatHtml : root.outputText
+                      function updateOutput() {
+                        // Changing QTextDocument's format can serialize its old
+                        // content. Set format first, then replace it atomically.
+                        textFormat = richOutput ? TextEdit.RichText : TextEdit.PlainText
+                        text = outputContent
+                      }
+                      onRichOutputChanged: updateOutput()
+                      onOutputContentChanged: updateOutput()
+                      Component.onCompleted: updateOutput()
                       onLinkActivated: function(link) { root.toggleActivity(link) }
                       readOnly: true
                       selectByMouse: true

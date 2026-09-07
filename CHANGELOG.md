@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.13
+
+- Switch chat/terminal document format before replacing its content, avoiding a flash of serialized HTML while loading another agent.
+
 ## 1.0.12
 
 - Allow an optional local backend command configuration for private adapters, including remote hosts.
