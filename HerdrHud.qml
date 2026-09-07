@@ -21,6 +21,7 @@ Item {
   readonly property string statePath: configDir + "/state.json"
 
   property bool opened: false
+  property bool demoMode: false
   property bool focusPrimed: false
   property string panelScreenName: ""
   property var agents: []
@@ -122,8 +123,56 @@ Item {
 
   function open(payloadJson) {
     noticeText = ""
+    var payload = ({})
+    try { payload = JSON.parse(String(payloadJson || "{}")) } catch (error) { payload = ({}) }
+    demoMode = payload.demo === true
+    if (demoMode) applyDemoData()
     if (focusedScreenProc.running) focusedScreenProc.running = false
     focusedScreenProc.exec([bridgePath, "focused-screen"])
+  }
+
+  function applyDemoData() {
+    agents = [
+      {
+        agent: "hermes", agent_status: "blocked", pane_id: "demo:p1",
+        terminal_id: "demo-1", workspace_id: "demo-1", workspace_label: "Raid planner"
+      },
+      {
+        agent: "codex", agent_status: "working", pane_id: "demo:p2",
+        terminal_id: "demo-2", workspace_id: "demo-2", workspace_label: "Combat AI"
+      },
+      {
+        agent: "codex", agent_status: "idle", pane_id: "demo:p3",
+        terminal_id: "demo-3", workspace_id: "demo-3", workspace_label: "Addon UI"
+      },
+      {
+        agent: "hermes", agent_status: "done", pane_id: "demo:p4",
+        terminal_id: "demo-4", workspace_id: "demo-4", workspace_label: "Quest research"
+      }
+    ]
+    selectedPane = "demo:p1"
+    unread = ({ "demo:p1": true })
+    connected = true
+    errorText = ""
+    outputText = [
+      "HERDR HUD DEMO",
+      "",
+      "Raid planner / Hermes",
+      "Status: waiting for your input",
+      "",
+      "I reviewed tonight's route and prepared two safe options:",
+      "",
+      "  1. Start with the eastern wing for faster upgrades.",
+      "  2. Clear the courtyard first for a steadier opening.",
+      "",
+      "Both plans keep the optional boss available.",
+      "",
+      "Reply with 1 or 2 and I will prepare the pull-by-pull checklist.",
+      "",
+      "────────────────────────────────────────────────────────────",
+      "Ready for prompt"
+    ].join("\n")
+    dataRevision++
   }
 
   function state(_arg) {
@@ -134,6 +183,7 @@ Item {
       bridgePath: bridgePath,
       screens: screenViews.instances.length,
       agents: agents.length,
+      demoMode: demoMode,
       connected: connected,
       selectedPane: selectedPane,
       bubbleX: activeView ? Math.round(activeView.bubbleCurrentX) : null,
@@ -159,6 +209,10 @@ Item {
   function close() {
     opened = false
     focusPrimed = false
+    if (demoMode) {
+      demoMode = false
+      Qt.callLater(root.refreshRoster)
+    }
   }
 
   function requestClose() {
@@ -246,7 +300,7 @@ Item {
   }
 
   function refreshRoster() {
-    if (rosterProc.running || bridgePath === "") return
+    if (demoMode || rosterProc.running || bridgePath === "") return
     rosterProc.exec([bridgePath, "roster"])
   }
 
@@ -290,11 +344,15 @@ Item {
   }
 
   function refreshOutput() {
-    if (!opened || !selectedPane || outputProc.running) return
+    if (demoMode || !opened || !selectedPane || outputProc.running) return
     outputProc.exec([bridgePath, "output", selectedPane])
   }
 
   function submitPrompt(message) {
+    if (demoMode) {
+      noticeText = "Prompt sending is disabled in preview mode."
+      return
+    }
     var agent = agentForPane(selectedPane)
     if (!agent || sending || !isReady(agent)) return
     if (!String(message || "").trim()) {
@@ -850,7 +908,7 @@ Item {
                     text: root.sending ? "Sending…" : "Send prompt"
                     enabled: {
                       var agent = root.agentForPane(root.selectedPane)
-                      return !root.sending && root.isReady(agent) && promptArea.text.trim().length > 0
+                      return !root.demoMode && !root.sending && root.isReady(agent) && promptArea.text.trim().length > 0
                     }
                     onClicked: root.submitPrompt(promptArea.text)
                     background: Rectangle {
