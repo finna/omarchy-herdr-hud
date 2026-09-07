@@ -136,8 +136,8 @@ Item {
       agents: agents.length,
       connected: connected,
       selectedPane: selectedPane,
-      bubbleX: activeView ? Math.round(activeView.bubbleX) : null,
-      bubbleY: activeView ? Math.round(activeView.bubbleY) : null,
+      bubbleX: activeView ? Math.round(activeView.bubbleCurrentX) : null,
+      bubbleY: activeView ? Math.round(activeView.bubbleCurrentY) : null,
       outputChars: outputText.length,
       notice: noticeText,
       error: errorText
@@ -423,6 +423,8 @@ Item {
       property bool draggingBubble: false
       property real bubbleX: root.positionFor(screenName, width, height).x
       property real bubbleY: root.positionFor(screenName, width, height).y
+      readonly property real bubbleCurrentX: bubble.x
+      readonly property real bubbleCurrentY: bubble.y
       property real rosterDragStart: 0
       property real rosterWidthStart: 0
 
@@ -897,7 +899,7 @@ Item {
         Rectangle {
           anchors.fill: parent
           radius: width / 2
-          color: bubbleMouse.containsMouse ? root.alpha(root.background, 0.98) : root.alpha(root.background, 0.92)
+          color: bubbleHover.hovered ? root.alpha(root.background, 0.98) : root.alpha(root.background, 0.92)
           border.width: 2
           border.color: root.attentionCount() > 0 ? root.success : root.alpha(root.gold, 0.82)
 
@@ -933,43 +935,34 @@ Item {
           }
         }
 
-        MouseArea {
-          id: bubbleMouse
-          anchors.fill: parent
-          hoverEnabled: true
-          cursorShape: pressed ? Qt.ClosedHandCursor : Qt.PointingHandCursor
-          property real pressSceneX: 0
-          property real pressSceneY: 0
-          property real bubbleStartX: 0
-          property real bubbleStartY: 0
+        HoverHandler {
+          id: bubbleHover
+          cursorShape: bubbleDrag.active ? Qt.ClosedHandCursor : Qt.PointingHandCursor
+        }
 
-          onPressed: function(mouse) {
-            pressSceneX = mouse.scenePosition.x
-            pressSceneY = mouse.scenePosition.y
-            bubbleStartX = overlayWindow.bubbleX
-            bubbleStartY = overlayWindow.bubbleY
-            overlayWindow.draggingBubble = false
-          }
-          onPositionChanged: function(mouse) {
-            if (!(mouse.buttons & Qt.LeftButton)) return
-            var dx = mouse.scenePosition.x - pressSceneX
-            var dy = mouse.scenePosition.y - pressSceneY
-            if (!overlayWindow.draggingBubble && Math.abs(dx) + Math.abs(dy) < 5) return
-            overlayWindow.draggingBubble = true
-            overlayWindow.bubbleX = root.clamp(
-              bubbleStartX + dx, root.edgeGap,
-              Math.max(root.edgeGap, overlayWindow.width - bubble.width - root.edgeGap))
-            overlayWindow.bubbleY = root.clamp(
-              bubbleStartY + dy, root.edgeGap,
-              Math.max(root.edgeGap, overlayWindow.height - bubble.height - root.edgeGap))
-          }
-          onReleased: {
-            if (overlayWindow.draggingBubble) {
-              root.savePosition(overlayWindow.screenName, overlayWindow.bubbleX, overlayWindow.bubbleY)
-            } else {
-              root.toggleOnScreen(overlayWindow.screenName)
+        TapHandler {
+          acceptedButtons: Qt.LeftButton
+          onTapped: root.toggleOnScreen(overlayWindow.screenName)
+        }
+
+        DragHandler {
+          id: bubbleDrag
+          target: bubble
+          acceptedButtons: Qt.LeftButton
+          xAxis.minimum: root.edgeGap
+          xAxis.maximum: Math.max(root.edgeGap, overlayWindow.width - bubble.width - root.edgeGap)
+          yAxis.minimum: root.edgeGap
+          yAxis.maximum: Math.max(root.edgeGap, overlayWindow.height - bubble.height - root.edgeGap)
+
+          onActiveChanged: {
+            if (active) {
+              overlayWindow.draggingBubble = true
+            } else if (overlayWindow.draggingBubble) {
+              overlayWindow.bubbleX = bubble.x
+              overlayWindow.bubbleY = bubble.y
+              root.savePosition(overlayWindow.screenName, bubble.x, bubble.y)
+              overlayWindow.draggingBubble = false
             }
-            overlayWindow.draggingBubble = false
           }
         }
       }
