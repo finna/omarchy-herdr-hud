@@ -127,6 +127,7 @@ Item {
   }
 
   function state(_arg) {
+    var activeView = viewForScreen(panelScreenName || defaultScreenName())
     return JSON.stringify({
       opened: opened,
       panelScreenName: panelScreenName,
@@ -135,6 +136,8 @@ Item {
       agents: agents.length,
       connected: connected,
       selectedPane: selectedPane,
+      bubbleX: activeView ? Math.round(activeView.bubbleX) : null,
+      bubbleY: activeView ? Math.round(activeView.bubbleY) : null,
       outputChars: outputText.length,
       notice: noticeText,
       error: errorText
@@ -418,6 +421,8 @@ Item {
       readonly property string screenName: modelData.name
       readonly property bool panelVisible: root.opened && root.panelScreenName === screenName
       property bool draggingBubble: false
+      property real bubbleX: root.positionFor(screenName, width, height).x
+      property real bubbleY: root.positionFor(screenName, width, height).y
       property real rosterDragStart: 0
       property real rosterWidthStart: 0
 
@@ -886,8 +891,8 @@ Item {
         id: bubble
         width: root.bubbleSize
         height: root.bubbleSize
-        x: root.positionFor(overlayWindow.screenName, overlayWindow.width, overlayWindow.height).x
-        y: root.positionFor(overlayWindow.screenName, overlayWindow.width, overlayWindow.height).y
+        x: overlayWindow.bubbleX
+        y: overlayWindow.bubbleY
 
         Rectangle {
           anchors.fill: parent
@@ -933,27 +938,34 @@ Item {
           anchors.fill: parent
           hoverEnabled: true
           cursorShape: pressed ? Qt.ClosedHandCursor : Qt.PointingHandCursor
-          drag.target: bubble
-          drag.axis: Drag.XAndYAxis
-          drag.minimumX: root.edgeGap
-          drag.maximumX: Math.max(root.edgeGap, overlayWindow.width - bubble.width - root.edgeGap)
-          drag.minimumY: root.edgeGap
-          drag.maximumY: Math.max(root.edgeGap, overlayWindow.height - bubble.height - root.edgeGap)
-          property real pressX: 0
-          property real pressY: 0
+          property real pressSceneX: 0
+          property real pressSceneY: 0
+          property real bubbleStartX: 0
+          property real bubbleStartY: 0
 
           onPressed: function(mouse) {
-            pressX = mouse.x
-            pressY = mouse.y
+            pressSceneX = mouse.scenePosition.x
+            pressSceneY = mouse.scenePosition.y
+            bubbleStartX = overlayWindow.bubbleX
+            bubbleStartY = overlayWindow.bubbleY
             overlayWindow.draggingBubble = false
           }
           onPositionChanged: function(mouse) {
-            if (pressed && (Math.abs(mouse.x - pressX) > 4 || Math.abs(mouse.y - pressY) > 4))
-              overlayWindow.draggingBubble = true
+            if (!(mouse.buttons & Qt.LeftButton)) return
+            var dx = mouse.scenePosition.x - pressSceneX
+            var dy = mouse.scenePosition.y - pressSceneY
+            if (!overlayWindow.draggingBubble && Math.abs(dx) + Math.abs(dy) < 5) return
+            overlayWindow.draggingBubble = true
+            overlayWindow.bubbleX = root.clamp(
+              bubbleStartX + dx, root.edgeGap,
+              Math.max(root.edgeGap, overlayWindow.width - bubble.width - root.edgeGap))
+            overlayWindow.bubbleY = root.clamp(
+              bubbleStartY + dy, root.edgeGap,
+              Math.max(root.edgeGap, overlayWindow.height - bubble.height - root.edgeGap))
           }
           onReleased: {
             if (overlayWindow.draggingBubble) {
-              root.savePosition(overlayWindow.screenName, bubble.x, bubble.y)
+              root.savePosition(overlayWindow.screenName, overlayWindow.bubbleX, overlayWindow.bubbleY)
             } else {
               root.toggleOnScreen(overlayWindow.screenName)
             }
