@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.3
+
+- Restore the original compact 800 × 590 panel size.
+
 ## 1.0.2
 
 - Add an independent overlay visibility toggle, with Super+Shift+H setup instructions.

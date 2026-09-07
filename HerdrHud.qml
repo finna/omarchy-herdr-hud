@@ -579,8 +579,8 @@ Item {
       Rectangle {
         id: panelCard
         visible: overlayWindow.panelVisible
-        width: Math.max(1, Math.min(parent.width - 32, 1220))
-        height: Math.max(1, Math.min(parent.height - 32, 840))
+        width: Math.max(1, Math.min(parent.width - 32, 800))
+        height: Math.max(1, Math.min(parent.height - 32, 590))
         anchors.centerIn: parent
         color: root.panelFill
         radius: 18
