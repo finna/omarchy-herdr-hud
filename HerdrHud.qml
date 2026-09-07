@@ -5,6 +5,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
+import "Roster.js" as Roster
 
 Item {
   id: root
@@ -29,6 +30,7 @@ Item {
   property var agents: []
   property string selectedPane: ""
   property var unread: ({})
+  readonly property var sortedAgents: Roster.sorted(agents, unread)
   property var lastSequence: ({})
   property var workingSince: ({})
   property double activityNow: Date.now()
@@ -261,6 +263,7 @@ Item {
       outputChars: outputText.length,
       view: formattedView ? "chat" : "terminal",
       conversationBlocks: JSON.parse(blocksJson).length,
+      rosterOrder: sortedAgents.map(function(agent) { return String(agent.pane_id || "") }),
       notice: noticeText,
       error: errorText
     })
@@ -418,7 +421,7 @@ Item {
         }
         live[pane] = true
         nextSequence[pane] = sequence
-        if (opened && pane === selectedPane) delete nextUnread[pane]
+        if (row.agent_status === "working" || (opened && pane === selectedPane)) delete nextUnread[pane]
         else if (lastSequence[pane] !== undefined && lastSequence[pane] !== sequence) nextUnread[pane] = true
       }
       for (var unreadPane in nextUnread) if (!live[unreadPane]) delete nextUnread[unreadPane]
@@ -808,7 +811,7 @@ Item {
 
                   Text {
                     Layout.fillWidth: true
-                    text: "AGENTS"
+                    text: "AGENTS · ATTENTION FIRST"
                     color: root.muted
                     font.family: Style.font.family
                     font.pixelSize: 11
@@ -822,7 +825,7 @@ Item {
                     Layout.fillHeight: true
                     clip: true
                     spacing: 7
-                    model: root.agents
+                    model: root.sortedAgents
                     boundsBehavior: Flickable.StopAtBounds
 
                     delegate: Rectangle {

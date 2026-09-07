@@ -9,6 +9,7 @@ Herdr HUD keeps your [Herdr](https://herdr.dev/) agents inside your game. A smal
 ## Features
 
 - See every connected agent, its agent type, workspace title, pane, and live status.
+- Agents needing attention appear first, followed by working agents and already-read idle agents. Reading a reply moves it down; agents blocked on input remain at the top.
 - Read live terminal output that follows the newest response automatically.
 - Use Codex Chat view for shaded prompts, separate replies, bold list labels, and expandable tool activity. Switch to Terminal at any time; your view preference is saved.
 - See Codex model and reasoning metadata above the output, with its trailing terminal composer and model footer removed from the viewer.

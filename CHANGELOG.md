@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.9
+
+- Sort agents by attention: unread replies and blocked agents first, working agents next, and already-read idle agents last.
+- Keep the existing order within each group and stop treating a transition into working as an unread reply.
+
 ## 1.0.8
 
 - Add a default Codex Chat view with shaded user prompts, labeled replies, paragraph spacing, bold list labels, and code formatting.
