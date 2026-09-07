@@ -9,6 +9,7 @@ Herdr HUD keeps your [Herdr](https://herdr.dev/) agents inside your game. A smal
 ## Features
 
 - See every connected agent, its agent type, workspace title, pane, and live status.
+- Distinguish agents sharing a workspace by their tab names, such as “local” and “mac studio”.
 - Agents needing attention appear first, followed by working agents and already-read idle agents. Reading a reply moves it down; agents blocked on input remain at the top.
 - Read live terminal output that follows the newest response automatically.
 - Use Codex Chat view for shaded prompts, separate replies, bold list labels, and expandable tool activity. Switch to Terminal at any time; your view preference is saved.

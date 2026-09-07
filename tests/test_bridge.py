@@ -64,16 +64,18 @@ class BridgeTests(unittest.TestCase):
 
     def test_roster_adds_workspace_titles(self):
         agents_json = json.dumps({
-            "result": {"agents": [{"pane_id": "w3:p1", "workspace_id": "w3"}]}
+            "result": {"agents": [{"pane_id": "w3:p1", "workspace_id": "w3", "tab_id": "w3:t1"}]}
         })
         workspaces_json = json.dumps({
             "result": {"workspaces": [{"workspace_id": "w3", "label": "My build"}]}
         })
-        with patch.object(bridge, "herdr", side_effect=[agents_json, workspaces_json]), patch.object(
+        tabs_json = json.dumps({"result": {"tabs": [{"tab_id": "w3:t1", "label": "mac studio"}]}})
+        with patch.object(bridge, "herdr", side_effect=[agents_json, workspaces_json, tabs_json]), patch.object(
             bridge, "response"
         ) as response:
             bridge.roster()
         self.assertEqual(response.call_args.args[0]["agents"][0]["workspace_label"], "My build")
+        self.assertEqual(response.call_args.args[0]["agents"][0]["tab_label"], "mac studio")
 
     def test_codex_footer_becomes_metadata(self):
         transcript = "• Here is the answer.\n\n─ Worked for 3m 26s ─────"

@@ -58,6 +58,8 @@ def roster() -> None:
     rows = agents()
     workspace_payload = json.loads(herdr("workspace", "list"))
     spaces = workspace_payload.get("result", {}).get("workspaces", [])
+    tabs = json.loads(herdr("tab", "list")).get("result", {}).get("tabs", [])
+    tab_labels = {str(tab.get("tab_id", "")): str(tab.get("label") or tab.get("number") or tab.get("tab_id", "")) for tab in tabs}
     labels = {
         str(space.get("workspace_id", "")): (
             space.get("label") or space.get("workspace_id") or "Untitled space"
@@ -69,6 +71,7 @@ def roster() -> None:
         item = dict(row)
         workspace_id = str(item.get("workspace_id", ""))
         item["workspace_label"] = labels.get(workspace_id, workspace_id or "Untitled space")
+        item["tab_label"] = tab_labels.get(str(row.get("tab_id", "")), str(row.get("tab_id") or ""))
         merged.append(item)
     response({"ok": True, "agents": merged})
 

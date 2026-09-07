@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.11
+
+- Show each agent's tab name beside its provider in the roster and in the selected conversation heading.
+- Keep pane IDs available in the card tooltip; label numeric tabs as “Tab 1”, etc.
+
 ## 1.0.10
 
 - Show silent completion and input-request alerts beside H while the panel is closed.

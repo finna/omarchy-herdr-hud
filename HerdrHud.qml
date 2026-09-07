@@ -392,6 +392,11 @@ Item {
     return type.charAt(0).toUpperCase() + type.slice(1)
   }
 
+  function tabName(agent) {
+    var label = String(agent ? agent.tab_label || "" : "")
+    return /^\d+$/.test(label) ? "Tab " + label : label
+  }
+
   function attentionCount() {
     dataRevision
     var count = 0
@@ -931,6 +936,9 @@ Item {
                     delegate: Rectangle {
                       id: agentRow
                       required property var modelData
+                      ToolTip.visible: agentMouse.containsMouse
+                      ToolTip.delay: 700
+                      ToolTip.text: root.tabName(modelData) + " · " + root.agentName(modelData) + " · " + String(modelData.pane_id || "")
                       width: ListView.view.width
                       height: 86
                       radius: 9
@@ -978,7 +986,7 @@ Item {
                           }
                           Text {
                             Layout.fillWidth: true
-                            text: root.agentName(agentRow.modelData) + " · " + String(agentRow.modelData.pane_id || "")
+                            text: (root.tabName(agentRow.modelData) || String(agentRow.modelData.pane_id || "")) + " · " + root.agentName(agentRow.modelData)
                             color: root.muted
                             font.family: Style.font.family
                             font.pixelSize: 12
@@ -1045,7 +1053,8 @@ Item {
                   Layout.fillWidth: true
                   text: {
                     var agent = root.agentForPane(root.selectedPane)
-                    return agent ? String(agent.workspace_label || "Untitled space") + " / " + root.agentName(agent) : "Choose an agent"
+                    return agent ? String(agent.workspace_label || "Untitled space")
+                      + (root.tabName(agent) ? " / " + root.tabName(agent) : "") + " / " + root.agentName(agent) : "Choose an agent"
                   }
                   color: root.gold
                   font.family: Style.font.family
