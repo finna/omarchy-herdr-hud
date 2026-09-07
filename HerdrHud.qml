@@ -21,6 +21,8 @@ Item {
   readonly property string statePath: configDir + "/state.json"
 
   property bool opened: false
+  property bool overlayVisible: true
+  property bool openingRequested: false
   property bool demoMode: false
   property bool focusPrimed: false
   property string panelScreenName: ""
@@ -106,6 +108,7 @@ Item {
     try {
       var parsed = JSON.parse(String(raw || ""))
       if (parsed && typeof parsed === "object") {
+        if (typeof parsed.overlayVisible === "boolean") overlayVisible = parsed.overlayVisible
         if (parsed.positions && typeof parsed.positions === "object") positions = parsed.positions
         if (Number(parsed.rosterWidth) > 0) rosterWidth = clamp(Number(parsed.rosterWidth), 150, 330)
       }
@@ -120,19 +123,35 @@ Item {
     if (!stateReady) return
     stateFile.setText(JSON.stringify({
       version: 1,
+      overlayVisible: overlayVisible,
       positions: positions,
       rosterWidth: Math.round(rosterWidth)
     }, null, 2) + "\n")
   }
 
   function open(payloadJson) {
+    overlayVisible = true
+    saveState()
     noticeText = ""
     var payload = ({})
     try { payload = JSON.parse(String(payloadJson || "{}")) } catch (error) { payload = ({}) }
     demoMode = payload.demo === true
     if (demoMode) applyDemoData()
     if (focusedScreenProc.running) focusedScreenProc.running = false
+    openingRequested = true
     focusedScreenProc.exec([bridgePath, "focused-screen"])
+  }
+
+  function toggleVisibility(_arg) {
+    if (overlayVisible) {
+      requestClose()
+      close()
+      overlayVisible = false
+    } else {
+      overlayVisible = true
+      refreshRoster()
+    }
+    saveState()
   }
 
   function applyDemoData() {
@@ -183,6 +202,7 @@ Item {
     var activeView = viewForScreen(panelScreenName || defaultScreenName())
     return JSON.stringify({
       opened: opened,
+      overlayVisible: overlayVisible,
       panelScreenName: panelScreenName,
       bridgePath: bridgePath,
       screens: screenViews.instances.length,
@@ -199,6 +219,7 @@ Item {
   }
 
   function openOnScreen(name) {
+    overlayVisible = true
     panelScreenName = name || defaultScreenName()
     opened = true
     var nextUnread = cloneObject(unread)
@@ -215,6 +236,7 @@ Item {
   }
 
   function close() {
+    openingRequested = false
     opened = false
     focusPrimed = false
     if (demoMode) {
@@ -309,7 +331,7 @@ Item {
   }
 
   function refreshRoster() {
-    if (demoMode || rosterProc.running || bridgePath === "") return
+    if (!overlayVisible || demoMode || rosterProc.running || bridgePath === "") return
     rosterProc.exec([bridgePath, "roster"])
   }
 
@@ -420,6 +442,8 @@ Item {
     stdout: StdioCollector { id: focusedScreenOut; waitForEnd: true }
     stderr: StdioCollector { id: focusedScreenErr; waitForEnd: true }
     onExited: function(exitCode) {
+      if (!root.openingRequested) return
+      root.openingRequested = false
       var name = ""
       if (exitCode === 0) {
         try { name = String(JSON.parse(focusedScreenOut.text).screen || "") }
@@ -474,7 +498,7 @@ Item {
   Timer {
     interval: 2000
     repeat: true
-    running: true
+    running: root.overlayVisible
     onTriggered: root.refreshRoster()
   }
 
@@ -505,7 +529,7 @@ Item {
       id: overlayWindow
       required property var modelData
       readonly property string screenName: modelData.name
-      readonly property bool panelVisible: root.opened && root.panelScreenName === screenName
+      readonly property bool panelVisible: root.overlayVisible && root.opened && root.panelScreenName === screenName
       property bool draggingBubble: false
       property real bubbleX: root.positionFor(screenName, width, height).x
       property real bubbleY: root.positionFor(screenName, width, height).y
@@ -525,7 +549,7 @@ Item {
       function setPromptText(value) { promptArea.text = value }
 
       screen: modelData
-      visible: true
+      visible: root.overlayVisible
       color: "transparent"
       anchors { top: true; bottom: true; left: true; right: true }
       exclusionMode: ExclusionMode.Ignore

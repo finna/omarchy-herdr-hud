@@ -37,7 +37,8 @@ The H button appears immediately. Click it to open the panel.
 To add a keyboard shortcut, put this in `~/.config/hypr/bindings.lua` using any free chord:
 
 ```lua
-o.bind("SUPER + H", "Toggle Herdr HUD", "omarchy-shell shell toggle finna.herdr-hud '{}'")
+o.bind("SUPER + H", "Toggle Herdr panel", "omarchy-shell shell toggle finna.herdr-hud '{}'")
+o.bind("SUPER + SHIFT + H", "Show or hide Herdr HUD", "omarchy-shell shell call finna.herdr-hud toggleVisibility '{}'")
 ```
 
 Then reload Hyprland with `hyprctl reload`. Omarchy keeps keybind choice in user config so this plugin does not overwrite an existing shortcut.
@@ -46,6 +47,7 @@ Then reload Hyprland with `hyprctl reload`. Omarchy keeps keybind choice in user
 
 - **Click H:** open or close the panel on that monitor. The button stays visible above the panel.
 - **Super+H** (after binding): toggle the panel; the H launcher remains available.
+- **Super+Shift+H** (after binding): hide everything, including the H circle; press again to show the circle. Super+H also brings back a hidden overlay and opens its panel.
 - **Drag H:** reposition the button.
 - **Click an agent:** select its terminal and clear its unread indicator.
 - **Ctrl+Enter:** send the current prompt.
@@ -53,6 +55,7 @@ Then reload Hyprland with `hyprctl reload`. Omarchy keeps keybind choice in user
 - **Drag the vertical divider:** resize the agent roster.
 
 State is stored in `~/.config/herdr-hud/state.json`.
+The overlay remembers whether it is hidden across shell restarts. Roster polling pauses while hidden.
 
 The terminal shows the most recent 180 lines and refreshes while the panel is open. It is a text viewer with a prompt composer, rather than an interactive terminal emulator. Blocked agents show an attention badge; approvals must be answered in Herdr before more prompts can be sent. Unread indicators track agent status changes, not individual chat messages.
 
