@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import html
 import re
 import shutil
 import subprocess
@@ -118,6 +120,82 @@ def terminal_view(text: str, provider: str) -> dict[str, str]:
     }
 
 
+def reply_html(text: str) -> str:
+    """Small safe formatter: terminal text is never interpreted as raw HTML."""
+    result = []
+    fenced = False
+    blank = False
+    for line in text.splitlines():
+        clean = line[2:] if line.startswith("  ") else line
+        if not fenced and not clean.strip():
+            if not blank:
+                result.append('<p style="margin:0;font-size:7px"><br></p>')
+            blank = True
+            continue
+        blank = False
+        if clean.lstrip().startswith("```"):
+            fenced = not fenced
+            result.append('<p style="margin:6px 0"><code>' + html.escape(clean) + '</code></p>')
+            continue
+        escaped = html.escape(clean)
+        if fenced or clean.startswith("    "):
+            result.append('<p style="margin:0;white-space:pre-wrap"><code>' + escaped + '</code></p>')
+            continue
+        if re.fullmatch(r'[─━\s]{3,}', clean):
+            result.append('<hr>')
+            continue
+        escaped = re.sub(r'`([^`]+)`', r'<code>\1</code>', escaped)
+        escaped = re.sub(r'\*\*([^*]+)\*\*', r'<b>\1</b>', escaped)
+        escaped = re.sub(r'^(\s*[-•] )([^:<]{1,70}:)', r'\1<b>\2</b>', escaped)
+        escaped = re.sub(r'^#{1,6} (.+)$', r'<b>\1</b>', escaped)
+        result.append('<p style="margin:3px 0">' + (escaped or '<br>') + '</p>')
+    return ''.join(result)
+
+
+def conversation_blocks(text: str, provider: str) -> list[dict[str, str]]:
+    """Conservative Codex screen parsing; retain unrecognized/truncated context."""
+    if provider.lower() != "codex":
+        return []
+    blocks = []
+    occurrences = {}
+    kind, lines, fenced = "context", [], False
+
+    def flush():
+        body = '\n'.join(lines).rstrip().lstrip('\n')
+        if body.strip():
+            heading = body.splitlines()[0]
+            identity = kind + heading
+            occurrence = occurrences.get(identity, 0)
+            occurrences[identity] = occurrence + 1
+            blocks.append({"kind": kind, "html": reply_html(body),
+                           "summary": html.escape(heading),
+                           "id": hashlib.sha256(identity.encode()).hexdigest()[:16] + f'-{occurrence}'})
+
+    for line in text.splitlines():
+        marker = None if fenced else re.match(r'^([›❯•●])(?: |$)(.*)', line)
+        status = not fenced and re.match(r'^[─━]+ (?:Worked for .+|Conversation recap.*)', line)
+        if marker or status:
+            flush()
+            if status:
+                kind, lines = "status", [line.strip('─━ ')]
+            else:
+                body = marker[2]
+                kind = "prompt" if marker[1] in "›❯" else "reply"
+                if kind == "reply" and re.match(
+                    r'^(?:Ran |Explored\b|Viewed Image\b|Searched (?:for|the web)|'
+                    r'Edited .+\(\+|Added .+\(\+|Deleted .+\(-|'
+                    r'Interacted with background terminal\b)', body
+                ):
+                    kind = "tool"
+                lines = [body]
+        else:
+            lines.append(line)
+        if line.lstrip().startswith('```'):
+            fenced = not fenced
+    flush()
+    return blocks
+
+
 def output(pane_id: str, provider: str = "") -> None:
     text = herdr(
         "agent",
@@ -128,7 +206,9 @@ def output(pane_id: str, provider: str = "") -> None:
         "--lines",
         "180",
     )
-    response(terminal_view(text, provider))
+    result = terminal_view(text, provider)
+    result["blocks"] = conversation_blocks(result["text"], provider)
+    response(result)
 
 
 def prompt(pane_id: str, terminal_id: str, message: str) -> None:

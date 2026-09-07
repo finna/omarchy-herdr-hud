@@ -121,6 +121,36 @@ class BridgeTests(unittest.TestCase):
             captured = body + "\n\n› Ask Codex to do anything\n\n  gpt-6-astra high · ~"
             self.assertEqual(bridge.terminal_view(captured, "codex")["text"], body)
 
+    def test_conversation_separates_prompts_replies_and_tools(self):
+        text = "Earlier fragment\n\n› Fix this\n  please\n\n• Ran pytest\n  └ 12 passed\n\n• Fixed it.\n\n  - Tests: all passed\n\n─ Worked for 20s ───"
+        blocks = bridge.conversation_blocks(text, "codex")
+        self.assertEqual([b["kind"] for b in blocks],
+                         ["context", "prompt", "tool", "reply", "status"])
+        self.assertIn("please", blocks[1]["html"])
+        self.assertIn("12 passed", blocks[2]["html"])
+        self.assertIn("<b>Tests:</b>", blocks[3]["html"])
+        self.assertEqual(bridge.conversation_blocks(text, "hermes"), [])
+
+    def test_conversation_preserves_code_and_escapes_markup(self):
+        text = '• Example\n  ```text\n› literal prompt\n• Ran literal command\n  ```\n  <img src="https://example.com/private">\n\n• Added a helpful feature.'
+        blocks = bridge.conversation_blocks(text, "codex")
+        self.assertEqual([b["kind"] for b in blocks], ["reply", "reply"])
+        self.assertIn("literal prompt", blocks[0]["html"])
+        self.assertNotIn("<img", blocks[0]["html"])
+        self.assertIn("&lt;img", blocks[0]["html"])
+
+    def test_tool_identity_survives_streaming_and_scrollback(self):
+        before = bridge.conversation_blocks("• Ran pytest\n  └ running", "codex")
+        after = bridge.conversation_blocks("› Test it\n\n• Ran pytest\n  └ done", "codex")
+        self.assertEqual(before[0]["id"], after[1]["id"])
+
+    def test_recap_and_repeated_tools_keep_their_content_and_identity(self):
+        blocks = bridge.conversation_blocks(
+            "• Ran tests\n  first result\n• Ran tests\n  second result\n"
+            "─ Conversation recap ─────\n\n  Keep this important summary.", "codex")
+        self.assertNotEqual(blocks[0]["id"], blocks[1]["id"])
+        self.assertIn("Keep this important summary.", blocks[2]["html"])
+
 
 if __name__ == "__main__":
     unittest.main()

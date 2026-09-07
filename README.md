@@ -10,6 +10,7 @@ Herdr HUD keeps your [Herdr](https://herdr.dev/) agents inside your game. A smal
 
 - See every connected agent, its agent type, workspace title, pane, and live status.
 - Read live terminal output that follows the newest response automatically.
+- Use Codex Chat view for shaded prompts, separate replies, bold list labels, and expandable tool activity. Switch to Terminal at any time; your view preference is saved.
 - See Codex model and reasoning metadata above the output, with its trailing terminal composer and model footer removed from the viewer.
 - See a persistent animated working indicator, including when no new terminal output is arriving. Its elapsed timer shows how long HUD has observed the agent working.
 - Prompt ready agents without switching windows.
@@ -25,6 +26,8 @@ Herdr HUD keeps your [Herdr](https://herdr.dev/) agents inside your game. A smal
 - Python 3 (included with Omarchy)
 
 The panel shows a setup message when Herdr is missing or unavailable.
+
+Chat view formats recognized Codex terminal patterns, rather than reading a structured message history. It shows the recent captured output, preserves unrecognized context, and keeps the full captured transcript in Terminal view. Other agent providers use Terminal view.
 
 Herdr HUD talks only to the local `herdr` and `hyprctl` commands. It does not add a service, request elevated privileges, or send data to a separate server.
 

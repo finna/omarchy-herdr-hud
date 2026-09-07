@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.8
+
+- Add a default Codex Chat view with shaded user prompts, labeled replies, paragraph spacing, bold list labels, and code formatting.
+- Collapse recognized tool activity into expandable rows; retain unrecognized context and conversation recaps.
+- Add a persistent Chat / Terminal switch. Other providers continue using Terminal.
+- Preserve the working banner, separate model metadata, and stable output updates in both views.
+
 ## 1.0.7
 
 - Keep terminal updates at the bottom in the same frame, avoiding cursor-driven scroll flashes.

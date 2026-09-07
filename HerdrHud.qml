@@ -46,6 +46,17 @@ Item {
   property string errorText: "Connecting to Herdr…"
   property string noticeText: ""
   property string outputText: "Select an agent to view its terminal."
+  onOutputTextChanged: {
+    if (demoMode || outputText === "Loading terminal output…" || outputText === "No agents are connected.")
+      blocksJson = "[]"
+  }
+  property string blocksJson: "[]"
+  property bool chatView: true
+  property bool preserveOutputScroll: false
+  property var expandedTools: ({})
+  onSelectedPaneChanged: { expandedTools = ({}); blocksJson = "[]" }
+  readonly property bool formattedView: chatView && blocksJson !== "[]"
+  readonly property string chatHtml: renderConversation()
   property string modelName: ""
   property string reasoningLevel: ""
   property int rosterWidth: 196
@@ -65,6 +76,25 @@ Item {
   readonly property color terminalFill: Qt.rgba(0.035, 0.045, 0.052, 1)
   readonly property int edgeGap: 16
   readonly property int bubbleSize: 54
+
+  component ViewButton: Button {
+    implicitWidth: text === "Chat" ? 48 : 72
+    implicitHeight: 24
+    checkable: true
+    background: Rectangle {
+      radius: 5
+      color: parent.checked ? root.alpha(root.gold, 0.18) : root.alpha(root.foreground, 0.05)
+      border.color: parent.checked ? root.alpha(root.gold, 0.6) : root.alpha(root.foreground, 0.15)
+    }
+    contentItem: Text {
+      text: parent.text
+      color: parent.enabled ? (parent.checked ? root.gold : root.muted) : root.muted
+      font.family: Style.font.family
+      font.pixelSize: 11
+      horizontalAlignment: Text.AlignHCenter
+      verticalAlignment: Text.AlignVCenter
+    }
+  }
 
   function alpha(color, value) {
     return Qt.rgba(color.r, color.g, color.b, value)
@@ -116,6 +146,7 @@ Item {
       var parsed = JSON.parse(String(raw || ""))
       if (parsed && typeof parsed === "object") {
         if (typeof parsed.overlayVisible === "boolean") overlayVisible = parsed.overlayVisible
+        if (typeof parsed.chatView === "boolean") chatView = parsed.chatView
         if (parsed.positions && typeof parsed.positions === "object") positions = parsed.positions
         if (Number(parsed.rosterWidth) > 0) rosterWidth = clamp(Number(parsed.rosterWidth), 150, 330)
       }
@@ -132,6 +163,7 @@ Item {
       version: 1,
       overlayVisible: overlayVisible,
       positions: positions,
+      chatView: chatView,
       rosterWidth: Math.round(rosterWidth)
     }, null, 2) + "\n")
   }
@@ -227,6 +259,8 @@ Item {
       bubbleX: activeView ? Math.round(activeView.bubbleCurrentX) : null,
       bubbleY: activeView ? Math.round(activeView.bubbleCurrentY) : null,
       outputChars: outputText.length,
+      view: formattedView ? "chat" : "terminal",
+      conversationBlocks: JSON.parse(blocksJson).length,
       notice: noticeText,
       error: errorText
     })
@@ -514,6 +548,7 @@ Item {
               root.lastOutputAt = Date.now()
               root.outputText = nextOutput
             }
+            root.blocksJson = JSON.stringify(result.blocks || [])
           } else if (root.outputText === "Loading terminal output…") {
             root.outputText = "No terminal output yet."
           }
@@ -916,15 +951,33 @@ Item {
                   elide: Text.ElideRight
                 }
 
-                Text {
-                  visible: root.connected && root.modelName !== ""
+                RowLayout {
                   Layout.fillWidth: true
-                  text: "Model: " + root.modelName
-                    + (root.reasoningLevel ? "  ·  Reasoning: " + root.reasoningLevel : "")
-                  color: root.muted
-                  font.family: Style.font.family
-                  font.pixelSize: 11
-                  elide: Text.ElideRight
+                  spacing: 6
+                  Text {
+                    visible: root.connected && root.modelName !== ""
+                    Layout.fillWidth: true
+                    text: "Model: " + root.modelName
+                      + (root.reasoningLevel ? "  ·  Reasoning: " + root.reasoningLevel : "")
+                    color: root.muted
+                    font.family: Style.font.family
+                    font.pixelSize: 11
+                    elide: Text.ElideRight
+                  }
+                  Item { Layout.fillWidth: true; visible: root.modelName === "" }
+                  ViewButton {
+                    text: "Chat"
+                    checked: root.formattedView
+                    enabled: root.blocksJson !== "[]"
+                    onClicked: { root.chatView = true; root.saveState() }
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Formatted Codex conversation"
+                  }
+                  ViewButton {
+                    text: "Terminal"
+                    checked: !root.chatView || root.blocksJson === "[]"
+                    onClicked: { root.chatView = false; root.saveState() }
+                  }
                 }
 
                 Rectangle {
@@ -1012,11 +1065,12 @@ Item {
                       id: outputArea
                       width: outputScroll.width
                       height: Math.max(outputScroll.height, implicitHeight)
-                      text: root.outputText
-                      textFormat: TextEdit.PlainText
+                      text: root.formattedView ? root.chatHtml : root.outputText
+                      textFormat: root.formattedView ? TextEdit.RichText : TextEdit.PlainText
+                      onLinkActivated: function(link) { root.toggleActivity(link) }
                       readOnly: true
                       selectByMouse: true
-                      wrapMode: TextEdit.WrapAnywhere
+                      wrapMode: TextEdit.Wrap
                       color: root.foreground
                       selectionColor: root.alpha(root.gold, 0.35)
                       selectedTextColor: root.foreground
@@ -1238,7 +1292,42 @@ Item {
     }
   }
 
+  function renderConversation() {
+    var blocks = JSON.parse(blocksJson)
+    var result = ""
+    for (var i = 0; i < blocks.length; i++) {
+      var block = blocks[i]
+      var label = block.kind === "prompt" ? "YOU" : block.kind === "reply" ? "AGENT"
+        : block.kind === "context" ? "EARLIER CONTEXT" : ""
+      if (block.kind === "tool") {
+        var expanded = !!expandedTools[block.id]
+        result += '<p style="margin:12px 0;color:#a3b6a9"><a style="color:#a3b6a9" href="activity:'
+          + block.id + '">' + (expanded ? '▾ ' : '▸ ') + block.summary + '</a></p>'
+        if (expanded) result += block.html
+      } else if (block.kind === "status") {
+        result += '<div style="margin:14px 0;color:#a3b6a9">' + block.html + '</div>'
+      } else {
+        result += '<table width="100%" cellspacing="0" cellpadding="10"'
+          + (block.kind === "prompt" ? ' bgcolor="' + Qt.tint(root.panelFill, root.alpha(root.foreground, 0.12)) + '"' : '') + '><tr><td>'
+          + '<p style="margin:0 0 8px;color:#e8c67c;font-size:10px"><b>' + label + '</b></p>'
+          + block.html + '</td></tr></table><p style="margin:0;font-size:5px"><br></p>'
+      }
+    }
+    return result
+  }
+
+  function toggleActivity(link) {
+    if (!String(link).startsWith("activity:")) return
+    var key = String(link).slice(9)
+    preserveOutputScroll = true
+    var next = Object.assign({}, expandedTools)
+    next[key] = !next[key]
+    expandedTools = next
+    Qt.callLater(function() { root.preserveOutputScroll = false })
+  }
+
   function scrollOutputToBottom(scrollView) {
+    if (preserveOutputScroll) return
     if (!scrollView) return
     var flick = scrollView.contentY !== undefined ? scrollView : scrollView.contentItem
     if (!flick) return
