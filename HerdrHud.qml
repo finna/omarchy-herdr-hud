@@ -453,8 +453,8 @@ Item {
         Region {
           x: bubble.x
           y: bubble.y
-          width: bubble.width
-          height: bubble.height
+          width: bubble.visible ? bubble.width : 0
+          height: bubble.visible ? bubble.height : 0
           radius: bubble.width / 2
         }
         Region {
@@ -891,6 +891,7 @@ Item {
 
       Item {
         id: bubble
+        visible: !overlayWindow.panelVisible
         width: root.bubbleSize
         height: root.bubbleSize
         x: overlayWindow.bubbleX
