@@ -152,6 +152,7 @@ Item {
       requestClose()
       close()
       overlayVisible = false
+      workingSince = ({})
     } else {
       overlayVisible = true
       refreshRoster()
@@ -354,6 +355,7 @@ Item {
     if (demoMode) return
     if (exitCode !== 0) {
       connected = false
+      workingSince = ({})
       errorText = String(error || "Herdr is unavailable").trim()
       return
     }
@@ -402,6 +404,7 @@ Item {
       if (opened && selectedPane) refreshOutput()
     } catch (parseError) {
       connected = false
+      workingSince = ({})
       errorText = "Herdr returned an unreadable response."
     }
   }
