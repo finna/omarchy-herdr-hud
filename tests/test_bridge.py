@@ -31,6 +31,16 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(run.call_args.args[0][-1], unsafe)
         self.assertFalse(run.call_args.kwargs.get("shell", False))
 
+    def test_missing_command_and_timeout_have_actionable_errors(self):
+        cases = [
+            (FileNotFoundError(), "is not installed"),
+            (subprocess.TimeoutExpired(["herdr"], 12), "did not respond in time"),
+        ]
+        for error, message in cases:
+            with self.subTest(message=message), patch.object(bridge.subprocess, "run", side_effect=error):
+                with self.assertRaisesRegex(bridge.BridgeError, message):
+                    bridge.run(["herdr"])
+
     def test_prompt_rechecks_agent_identity_and_readiness(self):
         with patch.object(bridge, "agents", return_value=[self.agent]), patch.object(
             bridge, "herdr", return_value=""

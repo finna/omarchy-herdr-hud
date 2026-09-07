@@ -138,7 +138,7 @@ Item {
   function applyDemoData() {
     agents = [
       {
-        agent: "hermes", agent_status: "blocked", pane_id: "demo:p1",
+        agent: "hermes", agent_status: "idle", pane_id: "demo:p1",
         terminal_id: "demo-1", workspace_id: "demo-1", workspace_label: "Raid planner"
       },
       {
@@ -150,7 +150,7 @@ Item {
         terminal_id: "demo-3", workspace_id: "demo-3", workspace_label: "Addon UI"
       },
       {
-        agent: "hermes", agent_status: "done", pane_id: "demo:p4",
+        agent: "hermes", agent_status: "blocked", pane_id: "demo:p4",
         terminal_id: "demo-4", workspace_id: "demo-4", workspace_label: "Quest research"
       }
     ]
@@ -336,7 +336,18 @@ Item {
         else if (lastSequence[pane] !== undefined && lastSequence[pane] !== sequence) nextUnread[pane] = true
       }
       for (var unreadPane in nextUnread) if (!live[unreadPane]) delete nextUnread[unreadPane]
+      var previousAgent = agentForPane(selectedPane)
       agents = rows
+      var currentAgent = agentForPane(selectedPane)
+      if (previousAgent && currentAgent && previousAgent.terminal_id !== currentAgent.terminal_id) {
+        var nextDrafts = cloneObject(drafts)
+        delete nextDrafts[selectedPane]
+        drafts = nextDrafts
+        var activeView = viewForScreen(panelScreenName)
+        if (activeView) activeView.setPromptText("")
+        outputText = "Loading terminal output…"
+        noticeText = "The agent in this pane changed."
+      }
       unread = nextUnread
       lastSequence = nextSequence
       connected = true

@@ -2,7 +2,7 @@
 
 Herdr HUD keeps your [Herdr](https://herdr.dev/) agents inside your game. A small draggable **H** button stays above fullscreen apps; click it or use a keybind to open a larger terminal and prompt panel without minimizing the game.
 
-![Opening and closing Herdr HUD with Super+H](assets/demo.gif)
+![Herdr HUD opening and closing over a fullscreen terminal](assets/demo.gif)
 
 ![Herdr HUD open over a fullscreen app](assets/herdr-hud.png)
 
