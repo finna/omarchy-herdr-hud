@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.5
+
+- Show a persistent animated working banner above the terminal while the selected agent is busy.
+- Display observed elapsed time and distinguish new terminal output from waiting for output.
+
 ## 1.0.4
 
 - Attach the panel to the H circle with a small visual connector.

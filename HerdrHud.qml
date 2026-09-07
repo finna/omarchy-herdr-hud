@@ -30,6 +30,11 @@ Item {
   property string selectedPane: ""
   property var unread: ({})
   property var lastSequence: ({})
+  property var workingSince: ({})
+  property double activityNow: Date.now()
+  property double lastOutputAt: Date.now()
+  readonly property bool selectedWorking: connected
+    && String(agentForPane(selectedPane)?.agent_status || "") === "working"
   property var drafts: ({})
   property int dataRevision: 0
   property bool connected: false
@@ -210,6 +215,8 @@ Item {
       demoMode: demoMode,
       connected: connected,
       selectedPane: selectedPane,
+      selectedWorking: selectedWorking,
+      workingElapsed: selectedWorking ? workingElapsed() : "",
       bubbleX: activeView ? Math.round(activeView.bubbleCurrentX) : null,
       bubbleY: activeView ? Math.round(activeView.bubbleCurrentY) : null,
       outputChars: outputText.length,
@@ -279,6 +286,7 @@ Item {
       drafts = nextDrafts
     }
     selectedPane = pane
+    lastOutputAt = Date.now()
     var nextUnread = cloneObject(unread)
     delete nextUnread[pane]
     unread = nextUnread
@@ -303,6 +311,13 @@ Item {
     if (status === "idle" || status === "done") return "Ready for prompt"
     if (status === "working") return "Working"
     return "Status unknown"
+  }
+
+  function workingElapsed() {
+    var agent = agentForPane(selectedPane)
+    var started = agent ? workingSince[String(agent.terminal_id || agent.pane_id)] : undefined
+    var seconds = Math.max(0, Math.floor((activityNow - (started || activityNow)) / 1000))
+    return (seconds < 60 ? seconds + "s" : Math.floor(seconds / 60) + "m " + seconds % 60 + "s") + "+"
   }
 
   function statusColor(agent) {
@@ -347,11 +362,16 @@ Item {
       var rows = Array.isArray(parsed.agents) ? parsed.agents : []
       var nextUnread = cloneObject(unread)
       var nextSequence = ({})
+      var nextWorkingSince = ({})
       var live = ({})
       for (var i = 0; i < rows.length; i++) {
         var row = rows[i]
         var pane = String(row.pane_id || "")
         var sequence = Number(row.state_change_seq || row.revision || 0)
+        if (row.agent_status === "working") {
+          var identity = String(row.terminal_id || pane)
+          nextWorkingSince[identity] = workingSince[identity] || Date.now()
+        }
         live[pane] = true
         nextSequence[pane] = sequence
         if (opened && pane === selectedPane) delete nextUnread[pane]
@@ -360,6 +380,8 @@ Item {
       for (var unreadPane in nextUnread) if (!live[unreadPane]) delete nextUnread[unreadPane]
       var previousAgent = agentForPane(selectedPane)
       agents = rows
+      workingSince = nextWorkingSince
+      activityNow = Date.now()
       var currentAgent = agentForPane(selectedPane)
       if (previousAgent && currentAgent && previousAgent.terminal_id !== currentAgent.terminal_id) {
         var nextDrafts = cloneObject(drafts)
@@ -468,7 +490,11 @@ Item {
       var agent = root.agentForPane(root.selectedPane)
       if (root.demoMode || root.outputPane !== root.selectedPane
           || !agent || String(agent.terminal_id || "") !== root.outputTerminal) return
-      if (exitCode === 0) root.outputText = outputOut.text || "No terminal output yet."
+      if (exitCode === 0) {
+        var nextOutput = outputOut.text || "No terminal output yet."
+        if (root.outputText !== nextOutput) root.lastOutputAt = Date.now()
+        root.outputText = nextOutput
+      }
       else root.noticeText = String(outputErr.text || "Could not read this agent.").trim()
     }
   }
@@ -493,6 +519,13 @@ Item {
         root.noticeText = String(promptErr.text || "Could not send the prompt.").trim()
       }
     }
+  }
+
+  Timer {
+    interval: 1000
+    repeat: true
+    running: root.opened && root.selectedWorking
+    onTriggered: root.activityNow = Date.now()
   }
 
   Timer {
@@ -851,6 +884,63 @@ Item {
                   font.pixelSize: 16
                   font.bold: true
                   elide: Text.ElideRight
+                }
+
+                Rectangle {
+                  visible: root.selectedWorking || root.sending
+                  Layout.fillWidth: true
+                  Layout.preferredHeight: 42
+                  color: root.alpha(root.working, 0.12)
+                  border.width: 1
+                  border.color: root.alpha(root.working, 0.35)
+                  radius: 7
+                  RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 12
+                    spacing: 10
+                    Row {
+                      spacing: 4
+                      Repeater {
+                        model: 3
+                        Rectangle {
+                          required property int index
+                          width: 5
+                          height: 5
+                          radius: 3
+                          color: root.gold
+                          SequentialAnimation on opacity {
+                            running: overlayWindow.panelVisible && (root.selectedWorking || root.sending)
+                            loops: Animation.Infinite
+                            PauseAnimation { duration: index * 130 }
+                            NumberAnimation { from: 0.25; to: 1; duration: 350; easing.type: Easing.InOutSine }
+                            NumberAnimation { from: 1; to: 0.25; duration: 350; easing.type: Easing.InOutSine }
+                          }
+                        }
+                      }
+                    }
+                    Text {
+                      Layout.fillWidth: true
+                      text: root.sending ? "Sending prompt…"
+                        : root.agentName(root.agentForPane(root.selectedPane)) + " is working…"
+                      color: root.gold
+                      font.family: Style.font.family
+                      font.pixelSize: 13
+                      font.bold: true
+                      elide: Text.ElideRight
+                    }
+                    Text {
+                      visible: root.selectedWorking
+                      text: (root.activityNow - root.lastOutputAt > 4000 ? "Waiting for output · " : "Live · ")
+                        + root.workingElapsed()
+                      color: root.muted
+                      font.family: Style.font.family
+                      font.pixelSize: 11
+                    }
+                  }
+                  HoverHandler { id: activityHover }
+                  ToolTip.visible: activityHover.hovered
+                  ToolTip.text: "Time observed working by HUD. The task may have started earlier."
                 }
 
                 Rectangle {
