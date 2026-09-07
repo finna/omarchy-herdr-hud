@@ -15,7 +15,7 @@ Item {
 
   readonly property string pluginId: (manifest && manifest.id) || "finna.herdr-hud"
   readonly property string pluginDir: (manifest && manifest.__sourceDir) || ""
-  readonly property string bridgePath: String(Qt.resolvedUrl("bin/herdr-hud")).replace(/^file:\/\//, "")
+  readonly property string bridgePath: decodeURIComponent(String(Qt.resolvedUrl("bin/herdr-hud")).replace(/^file:\/\//, ""))
   readonly property string homeDir: Quickshell.env("HOME")
   readonly property string configDir: homeDir + "/.config/herdr-hud"
   readonly property string statePath: configDir + "/state.json"
@@ -32,6 +32,10 @@ Item {
   property int dataRevision: 0
   property bool connected: false
   property bool sending: false
+  property string outputPane: ""
+  property string outputTerminal: ""
+  property string promptPane: ""
+  property string promptMessage: ""
   property string errorText: "Connecting to Herdr…"
   property string noticeText: ""
   property string outputText: "Select an agent to view its terminal."
@@ -197,6 +201,10 @@ Item {
   function openOnScreen(name) {
     panelScreenName = name || defaultScreenName()
     opened = true
+    var nextUnread = cloneObject(unread)
+    delete nextUnread[selectedPane]
+    unread = nextUnread
+    dataRevision++
     focusPrimed = false
     focusPrimeTimer.restart()
     refreshRoster()
@@ -240,6 +248,7 @@ Item {
   }
 
   function selectAgent(pane) {
+    if (demoMode) return
     var oldAgent = agentForPane(selectedPane)
     var view = viewForScreen(panelScreenName)
     if (oldAgent && view) {
@@ -263,7 +272,7 @@ Item {
 
   function isReady(agent) {
     var status = String(agent ? agent.agent_status || "" : "")
-    return status === "idle" || status === "done" || status === "blocked"
+    return status === "idle" || status === "done"
   }
 
   function statusLabel(agent) {
@@ -277,7 +286,7 @@ Item {
   function statusColor(agent) {
     if (!agent) return muted
     var pane = String(agent.pane_id || "")
-    if (unread[pane] || isReady(agent)) return success
+    if (unread[pane] || isReady(agent) || agent.agent_status === "blocked") return success
     if (String(agent.agent_status || "") === "working") return working
     return muted
   }
@@ -305,6 +314,7 @@ Item {
   }
 
   function applyRoster(raw, error, exitCode) {
+    if (demoMode) return
     if (exitCode !== 0) {
       connected = false
       errorText = String(error || "Herdr is unavailable").trim()
@@ -322,8 +332,8 @@ Item {
         var sequence = Number(row.state_change_seq || row.revision || 0)
         live[pane] = true
         nextSequence[pane] = sequence
-        if (lastSequence[pane] !== undefined && lastSequence[pane] !== sequence
-            && !(opened && pane === selectedPane)) nextUnread[pane] = true
+        if (opened && pane === selectedPane) delete nextUnread[pane]
+        else if (lastSequence[pane] !== undefined && lastSequence[pane] !== sequence) nextUnread[pane] = true
       }
       for (var unreadPane in nextUnread) if (!live[unreadPane]) delete nextUnread[unreadPane]
       agents = rows
@@ -331,10 +341,8 @@ Item {
       lastSequence = nextSequence
       connected = true
       errorText = ""
-      if (!agentForPane(selectedPane)) {
-        selectedPane = rows.length ? String(rows[0].pane_id || "") : ""
-        outputText = rows.length ? "Loading terminal output…" : "No agents are connected."
-      }
+      if (!agentForPane(selectedPane)) selectAgent(rows.length ? String(rows[0].pane_id || "") : "")
+      if (!rows.length) outputText = "No agents are connected."
       dataRevision++
       if (opened && selectedPane) refreshOutput()
     } catch (parseError) {
@@ -345,6 +353,9 @@ Item {
 
   function refreshOutput() {
     if (demoMode || !opened || !selectedPane || outputProc.running) return
+    outputPane = selectedPane
+    var agent = agentForPane(selectedPane)
+    outputTerminal = agent ? String(agent.terminal_id || "") : ""
     outputProc.exec([bridgePath, "output", selectedPane])
   }
 
@@ -360,6 +371,8 @@ Item {
       return
     }
     sending = true
+    promptPane = selectedPane
+    promptMessage = String(message)
     noticeText = "Sending to " + selectedPane + "…"
     promptProc.exec([
       bridgePath,
@@ -417,6 +430,9 @@ Item {
     stdout: StdioCollector { id: outputOut; waitForEnd: true }
     stderr: StdioCollector { id: outputErr; waitForEnd: true }
     onExited: function(exitCode) {
+      var agent = root.agentForPane(root.selectedPane)
+      if (root.demoMode || root.outputPane !== root.selectedPane
+          || !agent || String(agent.terminal_id || "") !== root.outputTerminal) return
       if (exitCode === 0) root.outputText = outputOut.text || "No terminal output yet."
       else root.noticeText = String(outputErr.text || "Could not read this agent.").trim()
     }
@@ -430,9 +446,10 @@ Item {
       root.sending = false
       if (exitCode === 0) {
         var view = root.viewForScreen(root.panelScreenName)
-        if (view) view.setPromptText("")
+        if (!root.demoMode && root.selectedPane === root.promptPane && view
+            && view.promptText() === root.promptMessage) view.setPromptText("")
         var nextDrafts = root.cloneObject(root.drafts)
-        nextDrafts[root.selectedPane] = ""
+        if (nextDrafts[root.promptPane] === root.promptMessage) nextDrafts[root.promptPane] = ""
         root.drafts = nextDrafts
         root.noticeText = "Prompt sent."
         root.refreshRoster()
@@ -527,8 +544,8 @@ Item {
       Rectangle {
         id: panelCard
         visible: overlayWindow.panelVisible
-        width: Math.max(720, Math.min(parent.width - 48, 1220))
-        height: Math.max(540, Math.min(parent.height - 64, 840))
+        width: Math.max(1, Math.min(parent.width - 32, 1220))
+        height: Math.max(1, Math.min(parent.height - 32, 840))
         anchors.centerIn: parent
         color: root.panelFill
         radius: 18
@@ -570,7 +587,7 @@ Item {
 
             Text {
               Layout.fillWidth: true
-              text: root.connected
+              text: root.demoMode ? "Preview · fictional agents" : root.connected
                 ? root.agents.length + " agent" + (root.agents.length === 1 ? "" : "s") + " connected"
                 : "Herdr unavailable"
               color: root.muted
@@ -754,12 +771,12 @@ Item {
                   hoverEnabled: true
                   cursorShape: Qt.SplitHCursor
                   onPressed: function(mouse) {
-                    overlayWindow.rosterDragStart = mouse.x
+                    overlayWindow.rosterDragStart = mapToItem(overlayWindow.contentItem, mouse.x, mouse.y).x
                     overlayWindow.rosterWidthStart = root.rosterWidth
                   }
                   onPositionChanged: function(mouse) {
                     if (pressed) root.rosterWidth = root.clamp(
-                      overlayWindow.rosterWidthStart + mouse.x - overlayWindow.rosterDragStart,
+                      overlayWindow.rosterWidthStart + mapToItem(overlayWindow.contentItem, mouse.x, mouse.y).x - overlayWindow.rosterDragStart,
                       150, 330)
                   }
                   onReleased: root.saveState()
@@ -816,6 +833,7 @@ Item {
                       padding: 10
                       background: null
                       onTextChanged: Qt.callLater(function() { root.scrollOutputToBottom(outputScroll) })
+                      onContentHeightChanged: Qt.callLater(function() { root.scrollOutputToBottom(outputScroll) })
                     }
                   }
                 }
@@ -935,7 +953,9 @@ Item {
                 Text {
                   Layout.fillWidth: true
                   Layout.preferredHeight: 20
-                  text: root.noticeText || "Ctrl+Enter to send · Esc to close · drag the divider to resize agents"
+                  text: root.noticeText || (root.agentForPane(root.selectedPane)?.agent_status === "blocked"
+                    ? "Approval needed — respond in Herdr to unblock this agent."
+                    : "Ctrl+Enter to send · Esc to close · drag the divider to resize agents")
                   color: root.noticeText ? root.gold : root.muted
                   font.family: Style.font.family
                   font.pixelSize: 12

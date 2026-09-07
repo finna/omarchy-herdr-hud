@@ -87,7 +87,9 @@ def prompt(pane_id: str, terminal_id: str, message: str) -> None:
     current = next((row for row in agents() if row.get("pane_id") == pane_id), None)
     if not current or current.get("terminal_id") != terminal_id:
         raise BridgeError("This agent changed. Select it again before sending.")
-    if current.get("agent_status") not in {"idle", "done", "blocked"}:
+    if current.get("agent_status") == "blocked":
+        raise BridgeError("This agent needs approval. Respond in Herdr to unblock it.")
+    if current.get("agent_status") not in {"idle", "done"}:
         raise BridgeError("Wait until this agent is ready before sending a prompt.")
     if not message.strip():
         raise BridgeError("Enter a prompt first.")

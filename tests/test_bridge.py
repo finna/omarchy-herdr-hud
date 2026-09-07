@@ -42,6 +42,7 @@ class BridgeTests(unittest.TestCase):
             [],
             [dict(self.agent, terminal_id="replacement")],
             [dict(self.agent, agent_status="working")],
+            [dict(self.agent, agent_status="blocked")],
         ]
         for rows in invalid_rows:
             with self.subTest(rows=rows), patch.object(bridge, "agents", return_value=rows), patch.object(
