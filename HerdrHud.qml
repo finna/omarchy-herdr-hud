@@ -506,11 +506,21 @@ Item {
       if (exitCode === 0) {
         try {
           var result = JSON.parse(outputOut.text)
-          var nextOutput = String(result.text || "No terminal output yet.")
-          if (root.outputText !== nextOutput) root.lastOutputAt = Date.now()
-          root.outputText = nextOutput
-          root.modelName = String(result.model || "")
-          root.reasoningLevel = String(result.reasoning || "")
+          var nextOutput = String(result.text || "")
+          // A terminal redraw can briefly expose an empty snapshot. Keep the
+          // last readable frame instead of flashing a placeholder in its place.
+          if (nextOutput.trim()) {
+            if (root.outputText !== nextOutput) {
+              root.lastOutputAt = Date.now()
+              root.outputText = nextOutput
+            }
+          } else if (root.outputText === "Loading terminal output…") {
+            root.outputText = "No terminal output yet."
+          }
+          if (result.model) {
+            root.modelName = String(result.model)
+            root.reasoningLevel = String(result.reasoning || "")
+          }
         } catch (error) {
           root.noticeText = "Could not read this agent's terminal response."
         }
@@ -983,17 +993,27 @@ Item {
                   border.color: root.alpha(root.foreground, 0.1)
                   clip: true
 
-                  ScrollView {
+                  Flickable {
                     id: outputScroll
                     anchors.fill: parent
                     anchors.margins: 6
                     clip: true
-                    ScrollBar.vertical.policy: ScrollBar.AsNeeded
-                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                    contentWidth: width
+                    contentHeight: outputArea.height
+                    boundsBehavior: Flickable.StopAtBounds
+                    flickableDirection: Flickable.VerticalFlick
+                    // Follow layout changes in the same frame. ScrollView's
+                    // TextArea cursor tracking briefly jumped to the top first.
+                    onContentHeightChanged: root.scrollOutputToBottom(outputScroll)
+                    onHeightChanged: root.scrollOutputToBottom(outputScroll)
+                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-                    TextArea {
+                    TextEdit {
                       id: outputArea
-                      text: root.connected ? root.outputText : ""
+                      width: outputScroll.width
+                      height: Math.max(outputScroll.height, implicitHeight)
+                      text: root.outputText
+                      textFormat: TextEdit.PlainText
                       readOnly: true
                       selectByMouse: true
                       wrapMode: TextEdit.WrapAnywhere
@@ -1003,9 +1023,7 @@ Item {
                       font.family: "monospace"
                       font.pixelSize: 13
                       padding: 10
-                      background: null
-                      onTextChanged: Qt.callLater(function() { root.scrollOutputToBottom(outputScroll) })
-                      onContentHeightChanged: Qt.callLater(function() { root.scrollOutputToBottom(outputScroll) })
+                      onTextChanged: root.scrollOutputToBottom(outputScroll)
                     }
                   }
                 }
@@ -1221,8 +1239,9 @@ Item {
   }
 
   function scrollOutputToBottom(scrollView) {
-    if (!scrollView || !scrollView.contentItem) return
-    var flick = scrollView.contentItem
+    if (!scrollView) return
+    var flick = scrollView.contentY !== undefined ? scrollView : scrollView.contentItem
+    if (!flick) return
     if (flick.contentY === undefined) return
     flick.contentY = Math.max(flick.originY || 0,
       (flick.contentHeight || 0) - (flick.height || 0))

@@ -100,8 +100,19 @@ def terminal_view(text: str, provider: str) -> dict[str, str]:
             return result
     if composer is None:
         return result
+    transcript = lines[:composer]
+    while transcript and not transcript[-1].strip():
+        transcript.pop()
+    # Codex redraws this timer every second. The HUD has its own activity
+    # banner, so don't repaint the transcript just to display timer ticks.
+    for index in range(len(transcript) - 1, max(-1, len(transcript) - 5), -1):
+        if re.match(r"^\s*[•●] Working \([^\n]*\besc to interrupt\)", transcript[index]):
+            transcript = transcript[:index]
+            break
+        if transcript[index].strip() and not transcript[index].startswith("  "):
+            break
     return {
-        "text": "\n".join(lines[:composer]).rstrip(),
+        "text": "\n".join(transcript).rstrip(),
         "model": footer["model"],
         "reasoning": footer["reasoning"] or "",
     }

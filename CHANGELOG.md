@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.7
+
+- Keep terminal updates at the bottom in the same frame, avoiding cursor-driven scroll flashes.
+- Preserve the last readable output through empty snapshots and connection interruptions.
+- Suppress Codex's constantly changing terminal timer; activity remains visible in the HUD banner.
+
 ## 1.0.6
 
 - Separate Codex's model and reasoning level into a labeled line above terminal output.

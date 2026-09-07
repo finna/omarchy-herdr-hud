@@ -107,6 +107,20 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(response.call_args.args[0]["text"], "• Answer")
         self.assertEqual(response.call_args.args[0]["model"], "gpt-6-astra")
 
+    def test_working_timer_does_not_change_transcript(self):
+        for elapsed in ("3s", "2m 50s", "1h 20m"):
+            captured = "• Still checking the files.\n\n• Working (" + elapsed + " • esc to interrupt) · 1 background terminal\n  running · /ps to view · /stop to close\n\n› Ask Codex to do anything\n\n  gpt-6-astra high · ~"
+            with self.subTest(elapsed=elapsed):
+                self.assertEqual(bridge.terminal_view(captured, "codex")["text"], "• Still checking the files.")
+
+    def test_preserves_completed_turn_and_activity_quotes(self):
+        for body in (
+            "• Answer\n\n─ Worked for 3m 26s ─────",
+            "• Working (3s • esc to interrupt)\n\n• This line explains the example above.",
+        ):
+            captured = body + "\n\n› Ask Codex to do anything\n\n  gpt-6-astra high · ~"
+            self.assertEqual(bridge.terminal_view(captured, "codex")["text"], body)
+
 
 if __name__ == "__main__":
     unittest.main()
