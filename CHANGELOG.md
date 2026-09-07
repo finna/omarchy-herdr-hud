@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.12
+
+- Allow an optional local backend command configuration for private adapters, including remote hosts.
+- Keep the default local Herdr connection and pass all adapter arguments literally without a shell.
+- Reject invalid adapter configuration before sending input.
+
 ## 1.0.11
 
 - Show each agent's tab name beside its provider in the roster and in the selected conversation heading.

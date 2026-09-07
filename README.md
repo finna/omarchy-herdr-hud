@@ -1,5 +1,12 @@
 # Herdr HUD for Omarchy
 
+For a private custom backend, `~/.config/herdr-hud/backend.json` may contain a
+`command` argument array, such as `{"command":["/path/to/herdr-adapter"]}`.
+The bridge appends Herdr CLI arguments directly without a shell. The adapter
+must preserve the CLI JSON shapes and uniquely scope agent and terminal IDs
+when combining machines. Omit this file for the normal local Herdr connection.
+Machine addresses and credentials belong in local configuration, not the plugin.
+
 Herdr HUD keeps your [Herdr](https://herdr.dev/) agents inside your game. A small draggable **H** button stays above fullscreen apps; click it or use a keybind to open a larger terminal and prompt panel without minimizing the game.
 
 ![Herdr HUD opening and closing over a fullscreen terminal](assets/demo.gif)

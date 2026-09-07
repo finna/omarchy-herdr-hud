@@ -3,6 +3,7 @@ from importlib.machinery import SourceFileLoader
 import json
 from pathlib import Path
 import subprocess
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -16,6 +17,18 @@ SPEC.loader.exec_module(bridge)
 
 
 class BridgeTests(unittest.TestCase):
+    def test_optional_backend_is_literal_and_invalid_config_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(bridge.Path, "home", return_value=Path(directory)):
+            config = Path(directory) / ".config/herdr-hud/backend.json"
+            config.parent.mkdir(parents=True)
+            config.write_text(json.dumps({"command": ["/usr/bin/python3", "/tmp/backend.py"]}))
+            with patch.object(bridge, "run", return_value="ok") as run:
+                bridge.herdr("agent", "prompt", "studio/w1:p1", "$(whoami)")
+            run.assert_called_once_with(["/usr/bin/python3", "/tmp/backend.py", "agent", "prompt", "studio/w1:p1", "$(whoami)"])
+            config.write_text(json.dumps({"command": "herdr; false"}))
+            with self.assertRaises(bridge.BridgeError):
+                bridge.herdr("agent", "list")
+
     def setUp(self):
         self.agent = {
             "pane_id": "w2:p1",
