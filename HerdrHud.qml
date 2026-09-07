@@ -46,6 +46,8 @@ Item {
   property string errorText: "Connecting to Herdr…"
   property string noticeText: ""
   property string outputText: "Select an agent to view its terminal."
+  property string modelName: ""
+  property string reasoningLevel: ""
   property int rosterWidth: 196
   property var positions: ({})
   property int stateRevision: 0
@@ -161,6 +163,8 @@ Item {
   }
 
   function applyDemoData() {
+    modelName = ""
+    reasoningLevel = ""
     agents = [
       {
         agent: "hermes", agent_status: "idle", pane_id: "demo:p1",
@@ -216,6 +220,8 @@ Item {
       demoMode: demoMode,
       connected: connected,
       selectedPane: selectedPane,
+      model: modelName,
+      reasoning: reasoningLevel,
       selectedWorking: selectedWorking,
       workingElapsed: selectedWorking ? workingElapsed() : "",
       bubbleX: activeView ? Math.round(activeView.bubbleCurrentX) : null,
@@ -287,6 +293,8 @@ Item {
       drafts = nextDrafts
     }
     selectedPane = pane
+    modelName = ""
+    reasoningLevel = ""
     lastOutputAt = Date.now()
     var nextUnread = cloneObject(unread)
     delete nextUnread[pane]
@@ -392,6 +400,8 @@ Item {
         var activeView = viewForScreen(panelScreenName)
         if (activeView) activeView.setPromptText("")
         outputText = "Loading terminal output…"
+        modelName = ""
+        reasoningLevel = ""
         noticeText = "The agent in this pane changed."
       }
       unread = nextUnread
@@ -414,7 +424,7 @@ Item {
     outputPane = selectedPane
     var agent = agentForPane(selectedPane)
     outputTerminal = agent ? String(agent.terminal_id || "") : ""
-    outputProc.exec([bridgePath, "output", selectedPane])
+    outputProc.exec([bridgePath, "output", selectedPane, String(agent?.agent || "")])
   }
 
   function submitPrompt(message) {
@@ -494,9 +504,16 @@ Item {
       if (root.demoMode || root.outputPane !== root.selectedPane
           || !agent || String(agent.terminal_id || "") !== root.outputTerminal) return
       if (exitCode === 0) {
-        var nextOutput = outputOut.text || "No terminal output yet."
-        if (root.outputText !== nextOutput) root.lastOutputAt = Date.now()
-        root.outputText = nextOutput
+        try {
+          var result = JSON.parse(outputOut.text)
+          var nextOutput = String(result.text || "No terminal output yet.")
+          if (root.outputText !== nextOutput) root.lastOutputAt = Date.now()
+          root.outputText = nextOutput
+          root.modelName = String(result.model || "")
+          root.reasoningLevel = String(result.reasoning || "")
+        } catch (error) {
+          root.noticeText = "Could not read this agent's terminal response."
+        }
       }
       else root.noticeText = String(outputErr.text || "Could not read this agent.").trim()
     }
@@ -886,6 +903,17 @@ Item {
                   font.family: Style.font.family
                   font.pixelSize: 16
                   font.bold: true
+                  elide: Text.ElideRight
+                }
+
+                Text {
+                  visible: root.connected && root.modelName !== ""
+                  Layout.fillWidth: true
+                  text: "Model: " + root.modelName
+                    + (root.reasoningLevel ? "  ·  Reasoning: " + root.reasoningLevel : "")
+                  color: root.muted
+                  font.family: Style.font.family
+                  font.pixelSize: 11
                   elide: Text.ElideRight
                 }
 

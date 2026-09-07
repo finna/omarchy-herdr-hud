@@ -75,6 +75,38 @@ class BridgeTests(unittest.TestCase):
             bridge.roster()
         self.assertEqual(response.call_args.args[0]["agents"][0]["workspace_label"], "My build")
 
+    def test_codex_footer_becomes_metadata(self):
+        transcript = "• Here is the answer.\n\n─ Worked for 3m 26s ─────"
+        captured = transcript + "\n\n› Ask Codex to do anything\n\n  gpt-6-astra high · ~\n"
+        self.assertEqual(bridge.terminal_view(captured, "codex"), {
+            "text": transcript, "model": "gpt-6-astra", "reasoning": "high",
+        })
+
+    def test_codex_wrapped_composer_and_changed_model(self):
+        captured = "• Result\n\n› Summarize the changes in\n  this repository\n\n  gpt-5.6-sol medium · ~/work"
+        self.assertEqual(bridge.terminal_view(captured, "codex"), {
+            "text": "• Result", "model": "gpt-5.6-sol", "reasoning": "medium",
+        })
+
+    def test_preserves_model_mentions_and_other_agent_output(self):
+        examples = [
+            "The placeholder is Ask Codex to do anything.\n  gpt-6-astra high · ~",
+            "› A previous prompt\n\n• This is the actual answer.\n  gpt-6-astra high · ~",
+            "A code example:\n```\n› Ask Codex to do anything\n```\n  gpt-6-astra high · ~",
+            "› Ask Codex to do anything\n\n  Unrecognized status footer",
+        ]
+        for captured in examples:
+            with self.subTest(captured=captured):
+                self.assertEqual(bridge.terminal_view(captured, "codex")["text"], captured)
+        captured = "An answer\n› Ask Codex to do anything\n\n  gpt-6-astra high · ~"
+        self.assertEqual(bridge.terminal_view(captured, "hermes")["text"], captured)
+
+    def test_output_returns_transcript_and_metadata(self):
+        with patch.object(bridge, "herdr", return_value="• Answer\n\n› Ask Codex to do anything\n\n  gpt-6-astra high · ~"), patch.object(bridge, "response") as response:
+            bridge.output("w4:p1", "codex")
+        self.assertEqual(response.call_args.args[0]["text"], "• Answer")
+        self.assertEqual(response.call_args.args[0]["model"], "gpt-6-astra")
+
 
 if __name__ == "__main__":
     unittest.main()

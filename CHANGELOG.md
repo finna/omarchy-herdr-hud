@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.6
+
+- Separate Codex's model and reasoning level into a labeled line above terminal output.
+- Remove its trailing input prompt and model footer from the transcript viewer.
+
 ## 1.0.5
 
 - Show a persistent animated working banner above the terminal while the selected agent is busy.

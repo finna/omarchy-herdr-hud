@@ -10,6 +10,7 @@ Herdr HUD keeps your [Herdr](https://herdr.dev/) agents inside your game. A smal
 
 - See every connected agent, its agent type, workspace title, pane, and live status.
 - Read live terminal output that follows the newest response automatically.
+- See Codex model and reasoning metadata above the output, with its trailing terminal composer and model footer removed from the viewer.
 - See a persistent animated working indicator, including when no new terminal output is arriving. Its elapsed timer shows how long HUD has observed the agent working.
 - Prompt ready agents without switching windows.
 - Green attention badge for blocked agents and unseen status changes.

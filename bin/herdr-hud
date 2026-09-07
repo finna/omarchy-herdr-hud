@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -70,7 +71,43 @@ def roster() -> None:
     response({"ok": True, "agents": merged})
 
 
-def output(pane_id: str) -> None:
+CODEX_MODEL_FOOTER = re.compile(
+    r"^\s*(?P<model>gpt-[\w.-]+|o[134](?:-[\w.-]+)?|codex-[\w.-]+)"
+    r"(?:\s+(?P<reasoning>minimal|low|medium|high|xhigh|max|ultra))?\s+[·|]\s*.+$"
+)
+
+
+def terminal_view(text: str, provider: str) -> dict[str, str]:
+    """Separate a recognized trailing Codex composer/footer from its transcript."""
+    result = {"text": text, "model": "", "reasoning": ""}
+    if provider.lower() != "codex":
+        return result
+    lines = text.rstrip().splitlines()
+    if not lines:
+        return result
+    footer = CODEX_MODEL_FOOTER.fullmatch(lines[-1])
+    if not footer:
+        return result
+    # Require the actual terminal composer immediately before the status footer.
+    # Never remove model names or quoted input hints elsewhere in an answer.
+    composer = None
+    for index in range(len(lines) - 2, max(-1, len(lines) - 14), -1):
+        line = lines[index]
+        if re.match(r"^\s*[›❯](?:\s|$)", line):
+            composer = index
+            break
+        if line.strip() and (not line.startswith("  ") or line.lstrip().startswith(("•", "```"))):
+            return result
+    if composer is None:
+        return result
+    return {
+        "text": "\n".join(lines[:composer]).rstrip(),
+        "model": footer["model"],
+        "reasoning": footer["reasoning"] or "",
+    }
+
+
+def output(pane_id: str, provider: str = "") -> None:
     text = herdr(
         "agent",
         "read",
@@ -80,7 +117,7 @@ def output(pane_id: str) -> None:
         "--lines",
         "180",
     )
-    sys.stdout.write(text)
+    response(terminal_view(text, provider))
 
 
 def prompt(pane_id: str, terminal_id: str, message: str) -> None:
@@ -111,8 +148,8 @@ def main(argv: list[str]) -> int:
     command = argv[1]
     if command == "roster" and len(argv) == 2:
         roster()
-    elif command == "output" and len(argv) == 3:
-        output(argv[2])
+    elif command == "output" and len(argv) in {3, 4}:
+        output(argv[2], argv[3] if len(argv) == 4 else "")
     elif command == "prompt" and len(argv) == 5:
         prompt(argv[2], argv[3], argv[4])
     elif command == "focused-screen" and len(argv) == 2:
