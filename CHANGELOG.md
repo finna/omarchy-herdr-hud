@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.4
+
+- Attach the panel to the H circle with a small visual connector.
+- Move the panel with the circle, flip sides near screen edges, and fit the available space.
+
 ## 1.0.3
 
 - Restore the original compact 800 × 590 panel size.

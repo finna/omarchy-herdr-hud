@@ -48,7 +48,7 @@ Then reload Hyprland with `hyprctl reload`. Omarchy keeps keybind choice in user
 - **Click H:** open or close the panel on that monitor. The button stays visible above the panel.
 - **Super+H** (after binding): toggle the panel; the H launcher remains available.
 - **Super+Shift+H** (after binding): hide everything, including the H circle; press again to show the circle. Super+H also brings back a hidden overlay and opens its panel.
-- **Drag H:** reposition the button.
+- **Drag H:** reposition the button and its attached panel. The panel flips sides near screen edges and stays within the screen.
 - **Click an agent:** select its terminal and clear its unread indicator.
 - **Ctrl+Enter:** send the current prompt.
 - **Esc:** close the panel.

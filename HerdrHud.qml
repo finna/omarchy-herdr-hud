@@ -535,6 +535,10 @@ Item {
       property real bubbleY: root.positionFor(screenName, width, height).y
       readonly property real bubbleCurrentX: bubble.x
       readonly property real bubbleCurrentY: bubble.y
+      readonly property real panelRoomLeft: Math.max(1, bubble.x - root.edgeGap - 12)
+      readonly property real panelRoomRight: Math.max(1, width - root.edgeGap - bubble.x - bubble.width - 12)
+      readonly property bool panelOnRight: panelRoomRight >= 800
+        || (panelRoomLeft < 800 && panelRoomRight >= panelRoomLeft)
       property real rosterDragStart: 0
       property real rosterWidthStart: 0
 
@@ -577,11 +581,23 @@ Item {
       }
 
       Rectangle {
+        visible: overlayWindow.panelVisible
+        x: overlayWindow.panelOnRight ? bubble.x + bubble.width : panelCard.x + panelCard.width
+        y: bubble.y + bubble.height / 2 - 1
+        width: 12
+        height: 2
+        color: root.alpha(root.gold, 0.62)
+      }
+
+      Rectangle {
         id: panelCard
         visible: overlayWindow.panelVisible
-        width: Math.max(1, Math.min(parent.width - 32, 800))
+        width: Math.min(800, overlayWindow.panelOnRight
+          ? overlayWindow.panelRoomRight : overlayWindow.panelRoomLeft)
         height: Math.max(1, Math.min(parent.height - 32, 590))
-        anchors.centerIn: parent
+        x: overlayWindow.panelOnRight ? bubble.x + bubble.width + 12 : bubble.x - width - 12
+        y: root.clamp(bubble.y + bubble.height / 2 - 41,
+          root.edgeGap, Math.max(root.edgeGap, parent.height - height - root.edgeGap))
         color: root.panelFill
         radius: 18
         border.width: 2
