@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.10
+
+- Show silent completion and input-request alerts beside H while the panel is closed.
+- Include the workspace name and a short Codex reply preview, with click-to-open and dismiss controls.
+- Dismiss after eight seconds, pause on hover, and queue up to five alerts without changing keyboard focus.
+- Skip startup/reconnect baselines, replaced agents, and repeated idle states. Preserve the unread badge after the alert expires.
+
 ## 1.0.9
 
 - Sort agents by attention: unread replies and blocked agents first, working agents next, and already-read idle agents last.

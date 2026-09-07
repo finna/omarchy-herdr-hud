@@ -16,6 +16,7 @@ Herdr HUD keeps your [Herdr](https://herdr.dev/) agents inside your game. A smal
 - See a persistent animated working indicator, including when no new terminal output is arriving. Its elapsed timer shows how long HUD has observed the agent working.
 - Prompt ready agents without switching windows.
 - Green attention badge for blocked agents and unseen status changes.
+- Silent alerts beside H when an agent finishes or needs input while the panel is closed. Click to open that agent, hover to keep the alert visible, or dismiss it with ×. Alerts disappear after eight seconds; the unread badge remains. Codex alerts include a short reply preview when available.
 - Drag the H button anywhere; its position is saved separately for each monitor.
 - Drag the roster divider to give the terminal more room.
 - Appears over fullscreen apps and games on Omarchy's Hyprland desktop.

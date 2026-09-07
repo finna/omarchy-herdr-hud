@@ -106,6 +106,7 @@ class BridgeTests(unittest.TestCase):
             bridge.output("w4:p1", "codex")
         self.assertEqual(response.call_args.args[0]["text"], "• Answer")
         self.assertEqual(response.call_args.args[0]["model"], "gpt-6-astra")
+        self.assertEqual(response.call_args.args[0]["preview"], "Answer")
 
     def test_working_timer_does_not_change_transcript(self):
         for elapsed in ("3s", "2m 50s", "1h 20m"):

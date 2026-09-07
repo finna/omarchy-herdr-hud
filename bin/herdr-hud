@@ -208,6 +208,8 @@ def output(pane_id: str, provider: str = "") -> None:
     )
     result = terminal_view(text, provider)
     result["blocks"] = conversation_blocks(result["text"], provider)
+    replies = [block for block in result["blocks"] if block["kind"] == "reply"]
+    result["preview"] = " ".join(html.unescape(re.sub(r'<[^>]+>', ' ', replies[-1]["html"])).split())[:240] if replies else ""
     response(result)
 
 

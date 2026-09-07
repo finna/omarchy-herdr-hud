@@ -6,6 +6,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
 import "Roster.js" as Roster
+import "Alerts.js" as Alerts
 
 Item {
   id: root
@@ -22,6 +23,7 @@ Item {
   readonly property string statePath: configDir + "/state.json"
 
   property bool opened: false
+  onOpenedChanged: if (opened) clearAlerts()
   property bool overlayVisible: true
   property bool openingRequested: false
   property bool demoMode: false
@@ -32,6 +34,12 @@ Item {
   property var unread: ({})
   readonly property var sortedAgents: Roster.sorted(agents, unread)
   property var lastSequence: ({})
+  property var alertQueue: []
+  property var activeAlert: null
+  property string alertPreview: ""
+  property bool alertHovered: false
+  property string previewIdentity: ""
+  property bool alertBaseline: false
   property var workingSince: ({})
   property double activityNow: Date.now()
   property double lastOutputAt: Date.now()
@@ -188,6 +196,8 @@ Item {
       requestClose()
       close()
       overlayVisible = false
+      clearAlerts()
+      alertBaseline = false
       workingSince = ({})
     } else {
       overlayVisible = true
@@ -263,6 +273,8 @@ Item {
       outputChars: outputText.length,
       view: formattedView ? "chat" : "terminal",
       conversationBlocks: JSON.parse(blocksJson).length,
+      alertVisible: !!activeAlert && overlayVisible && !opened,
+      alertPane: activeAlert ? activeAlert.pane_id : "",
       rosterOrder: sortedAgents.map(function(agent) { return String(agent.pane_id || "") }),
       notice: noticeText,
       error: errorText
@@ -396,9 +408,62 @@ Item {
     rosterProc.exec([bridgePath, "roster"])
   }
 
+  function clearAlerts() {
+    alertQueue = []
+    activeAlert = null
+    alertHovered = false
+  }
+
+  function queueAlert(agent) {
+    if (opened || !overlayVisible) return
+    var next = alertQueue.slice()
+    next.push(agent)
+    alertQueue = next.slice(-5)
+    if (!activeAlert) showNextAlert()
+  }
+
+  function showNextAlert() {
+    activeAlert = null
+    if (!alertQueue.length || opened || !overlayVisible) return
+    var next = alertQueue.slice()
+    var agent = next.shift()
+    alertQueue = next
+    var live = agentForPane(String(agent.pane_id))
+    if (!live || live.terminal_id !== agent.terminal_id || live.agent_status === "working") {
+      showNextAlert()
+      return
+    }
+    activeAlert = agent
+    alertPreview = agent.agent_status === "blocked" ? "Open the agent to see what needs your input."
+      : "Open the agent to read its latest reply."
+    if (!alertPreviewProc.running && agent.agent_status !== "blocked") {
+      previewIdentity = String(agent.terminal_id)
+      alertPreviewProc.exec([bridgePath, "output", String(agent.pane_id), String(agent.agent || "")])
+    }
+  }
+
+  function openAlert(screenName) {
+    var agent = activeAlert
+    if (!agent) return
+    var live = agentForPane(String(agent.pane_id))
+    if (!live || live.terminal_id !== agent.terminal_id) { showNextAlert(); return }
+    clearAlerts()
+    selectAgent(String(agent.pane_id))
+    openOnScreen(screenName)
+  }
+
+  function previewAlert(_arg) {
+    var agent = agents.find(function(row) { return row.agent_status === "idle" || row.agent_status === "done" })
+    if (!agent) return
+    requestClose()
+    Qt.callLater(function() { root.queueAlert(agent) })
+  }
+
   function applyRoster(raw, error, exitCode) {
     if (demoMode) return
     if (exitCode !== 0) {
+      alertBaseline = false
+      clearAlerts()
       connected = false
       workingSince = ({})
       errorText = String(error || "Herdr is unavailable").trim()
@@ -407,6 +472,8 @@ Item {
     try {
       var parsed = JSON.parse(String(raw || "{}"))
       var rows = Array.isArray(parsed.agents) ? parsed.agents : []
+      var completed = alertBaseline ? Alerts.events(agents, rows) : []
+      alertBaseline = true
       var nextUnread = cloneObject(unread)
       var nextSequence = ({})
       var nextWorkingSince = ({})
@@ -444,12 +511,19 @@ Item {
       unread = nextUnread
       lastSequence = nextSequence
       connected = true
+      if (activeAlert) {
+        var alertAgent = agentForPane(String(activeAlert.pane_id))
+        if (!alertAgent || alertAgent.terminal_id !== activeAlert.terminal_id || alertAgent.agent_status === "working") showNextAlert()
+      }
+      completed.forEach(function(agent) { root.queueAlert(agent) })
       errorText = ""
       if (!agentForPane(selectedPane)) selectAgent(rows.length ? String(rows[0].pane_id || "") : "")
       if (!rows.length) outputText = "No agents are connected."
       dataRevision++
       if (opened && selectedPane) refreshOutput()
     } catch (parseError) {
+      alertBaseline = false
+      clearAlerts()
       connected = false
       workingSince = ({})
       errorText = "Herdr returned an unreadable response."
@@ -530,6 +604,25 @@ Item {
     stdout: StdioCollector { id: rosterOut; waitForEnd: true }
     stderr: StdioCollector { id: rosterErr; waitForEnd: true }
     onExited: function(exitCode) { root.applyRoster(rosterOut.text, rosterErr.text, exitCode) }
+  }
+
+  Process {
+    id: alertPreviewProc
+    stdout: StdioCollector { id: alertPreviewOut; waitForEnd: true }
+    onExited: function(exitCode) {
+      if (exitCode !== 0 || !root.activeAlert || root.activeAlert.agent_status === "blocked"
+          || String(root.activeAlert.terminal_id) !== root.previewIdentity) return
+      try {
+        var preview = String(JSON.parse(alertPreviewOut.text).preview || "")
+        if (preview) root.alertPreview = preview
+      } catch (error) {}
+    }
+  }
+
+  Timer {
+    interval: 8000
+    running: !!root.activeAlert && !root.alertHovered
+    onTriggered: root.showNextAlert()
   }
 
   Process {
@@ -678,6 +771,13 @@ Item {
           width: overlayWindow.panelVisible ? panelCard.width : 0
           height: overlayWindow.panelVisible ? panelCard.height : 0
           radius: 18
+        }
+        Region {
+          x: completionAlert.x
+          y: completionAlert.y
+          width: completionAlert.visible ? completionAlert.width : 0
+          height: completionAlert.visible ? completionAlert.height : 0
+          radius: 12
         }
       }
 
@@ -1210,6 +1310,79 @@ Item {
                 }
               }
             }
+          }
+        }
+      }
+
+      Rectangle {
+        id: completionAlert
+        z: 5
+        visible: root.overlayVisible && !root.opened && !!root.activeAlert
+          && overlayWindow.screenName === (root.panelScreenName || root.defaultScreenName())
+        width: Math.min(320, overlayWindow.width - root.edgeGap * 2)
+        height: 126
+        x: root.clamp(overlayWindow.panelRoomLeft >= width ? bubble.x - width - 12 : bubble.x + bubble.width + 12,
+          root.edgeGap, overlayWindow.width - width - root.edgeGap)
+        y: root.clamp(bubble.y + bubble.height / 2 - height / 2, root.edgeGap, overlayWindow.height - height - root.edgeGap)
+        radius: 12
+        color: root.panelFill
+        border.width: 1
+        border.color: root.alpha(root.success, 0.6)
+        MouseArea {
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onEntered: root.alertHovered = true
+          onExited: root.alertHovered = false
+          onClicked: root.openAlert(overlayWindow.screenName)
+        }
+        Column {
+          anchors.fill: parent
+          anchors.margins: 14
+          spacing: 6
+          Text {
+            width: parent.width - 24
+            text: root.activeAlert ? String(root.activeAlert.workspace_label || "Agent") : ""
+            textFormat: Text.PlainText
+            font.family: Style.font.family
+            font.pixelSize: 14
+            font.bold: true
+            color: root.gold
+            elide: Text.ElideRight
+          }
+          Text {
+            text: root.activeAlert && root.activeAlert.agent_status === "blocked" ? "Needs your input" : "Finished working"
+            font.family: Style.font.family
+            font.pixelSize: 11
+            color: root.success
+          }
+          Text {
+            width: parent.width
+            text: root.alertPreview
+            textFormat: Text.PlainText
+            font.family: Style.font.family
+            font.pixelSize: 12
+            color: root.foreground
+            wrapMode: Text.Wrap
+            maximumLineCount: 2
+            elide: Text.ElideRight
+          }
+        }
+        Button {
+          anchors.top: parent.top
+          anchors.right: parent.right
+          anchors.margins: 5
+          implicitWidth: 28
+          implicitHeight: 28
+          text: "×"
+          onClicked: { root.alertHovered = false; root.showNextAlert() }
+          background: Rectangle { color: "transparent" }
+          contentItem: Text {
+            text: parent.text
+            color: root.muted
+            font.pixelSize: 18
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
           }
         }
       }
