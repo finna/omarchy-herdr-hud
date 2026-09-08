@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "finna.herdr-hud",
   "name": "Herdr HUD",
-  "version": "1.0.13",
+  "version": "1.0.14",
   "author": "Alex Finn",
   "license": "MIT",
   "description": "Prompt and monitor your Herdr agents without leaving a fullscreen game.",

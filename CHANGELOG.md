@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.14
+
+- Extend chat to the top of the compact panel; move branding and agent count into the sidebar.
+- Remove Refresh, close, conversation title, and Chat / Terminal controls. Polling remains automatic; H and Esc close the panel.
+- Always format recognized conversation blocks, preserving plain output when formatting is unavailable.
+- Keep selected-agent model and reasoning details in its sidebar tooltip and retain the working indicator.
+
 ## 1.0.13
 
 - Switch chat/terminal document format before replacing its content, avoiding a flash of serialized HTML while loading another agent.
