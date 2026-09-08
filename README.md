@@ -19,8 +19,8 @@ Herdr HUD keeps your [Herdr](https://herdr.dev/) agents inside your game. A smal
 - Distinguish agents sharing a workspace by their tab names, such as “local” and “mac studio”.
 - Agents needing attention appear first, followed by working agents and already-read idle agents. Reading a reply moves it down; agents blocked on input remain at the top.
 - Read live terminal output that follows the newest response automatically.
-- Use Codex Chat view for shaded prompts, separate replies, bold list labels, and expandable tool activity. Switch to Terminal at any time; your view preference is saved.
-- See Codex model and reasoning metadata above the output, with its trailing terminal composer and model footer removed from the viewer.
+- Use Codex Chat view for shaded prompts, separate replies, bold list labels, and expandable tool activity. Chat fills the panel from the top; unrecognized output remains visible as plain text.
+- See Codex model and reasoning metadata by hovering the selected agent card, with its trailing terminal composer and model footer removed from the viewer.
 - See a persistent animated working indicator, including when no new terminal output is arriving. Its elapsed timer shows how long HUD has observed the agent working.
 - Prompt ready agents without switching windows.
 - Green attention badge for blocked agents and unseen status changes.
@@ -37,7 +37,7 @@ Herdr HUD keeps your [Herdr](https://herdr.dev/) agents inside your game. A smal
 
 The panel shows a setup message when Herdr is missing or unavailable.
 
-Chat view formats recognized Codex terminal patterns, rather than reading a structured message history. It shows the recent captured output, preserves unrecognized context, and keeps the full captured transcript in Terminal view. Other agent providers use Terminal view.
+Chat view formats recognized Codex terminal patterns, rather than reading a structured message history. It shows the recent captured output, preserves unrecognized context, and displays plain captured output when formatted blocks are unavailable.
 
 Herdr HUD talks only to the local `herdr` and `hyprctl` commands. It does not add a service, request elevated privileges, or send data to a separate server.
 

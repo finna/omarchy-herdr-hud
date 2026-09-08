@@ -61,11 +61,10 @@ Item {
       blocksJson = "[]"
   }
   property string blocksJson: "[]"
-  property bool chatView: true
   property bool preserveOutputScroll: false
   property var expandedTools: ({})
   onSelectedPaneChanged: { expandedTools = ({}); blocksJson = "[]" }
-  readonly property bool formattedView: chatView && blocksJson !== "[]"
+  readonly property bool formattedView: blocksJson !== "[]"
   readonly property string chatHtml: renderConversation()
   property string modelName: ""
   property string reasoningLevel: ""
@@ -86,25 +85,6 @@ Item {
   readonly property color terminalFill: Qt.rgba(0.035, 0.045, 0.052, 1)
   readonly property int edgeGap: 16
   readonly property int bubbleSize: 54
-
-  component ViewButton: Button {
-    implicitWidth: text === "Chat" ? 48 : 72
-    implicitHeight: 24
-    checkable: true
-    background: Rectangle {
-      radius: 5
-      color: parent.checked ? root.alpha(root.gold, 0.18) : root.alpha(root.foreground, 0.05)
-      border.color: parent.checked ? root.alpha(root.gold, 0.6) : root.alpha(root.foreground, 0.15)
-    }
-    contentItem: Text {
-      text: parent.text
-      color: parent.enabled ? (parent.checked ? root.gold : root.muted) : root.muted
-      font.family: Style.font.family
-      font.pixelSize: 11
-      horizontalAlignment: Text.AlignHCenter
-      verticalAlignment: Text.AlignVCenter
-    }
-  }
 
   function alpha(color, value) {
     return Qt.rgba(color.r, color.g, color.b, value)
@@ -156,7 +136,6 @@ Item {
       var parsed = JSON.parse(String(raw || ""))
       if (parsed && typeof parsed === "object") {
         if (typeof parsed.overlayVisible === "boolean") overlayVisible = parsed.overlayVisible
-        if (typeof parsed.chatView === "boolean") chatView = parsed.chatView
         if (parsed.positions && typeof parsed.positions === "object") positions = parsed.positions
         if (Number(parsed.rosterWidth) > 0) rosterWidth = clamp(Number(parsed.rosterWidth), 150, 330)
       }
@@ -173,7 +152,6 @@ Item {
       version: 1,
       overlayVisible: overlayVisible,
       positions: positions,
-      chatView: chatView,
       rosterWidth: Math.round(rosterWidth)
     }, null, 2) + "\n")
   }
@@ -870,6 +848,8 @@ Item {
                       ToolTip.visible: agentMouse.containsMouse
                       ToolTip.delay: 700
                       ToolTip.text: root.tabName(modelData) + " · " + root.agentName(modelData) + " · " + String(modelData.pane_id || "")
+                        + (String(modelData.pane_id || "") === root.selectedPane && root.modelName
+                          ? "\nModel: " + root.modelName + (root.reasoningLevel ? " · Reasoning: " + root.reasoningLevel : "") : "")
                       width: ListView.view.width
                       height: 86
                       radius: 9
@@ -979,49 +959,6 @@ Item {
                 Layout.fillHeight: true
                 Layout.leftMargin: 4
                 spacing: 8
-
-                Text {
-                  Layout.fillWidth: true
-                  text: {
-                    var agent = root.agentForPane(root.selectedPane)
-                    return agent ? String(agent.workspace_label || "Untitled space")
-                      + (root.tabName(agent) ? " / " + root.tabName(agent) : "") + " / " + root.agentName(agent) : "Choose an agent"
-                  }
-                  color: root.gold
-                  font.family: Style.font.family
-                  font.pixelSize: 16
-                  font.bold: true
-                  elide: Text.ElideRight
-                }
-
-                RowLayout {
-                  Layout.fillWidth: true
-                  spacing: 6
-                  Text {
-                    visible: root.connected && root.modelName !== ""
-                    Layout.fillWidth: true
-                    text: "Model: " + root.modelName
-                      + (root.reasoningLevel ? "  ·  Reasoning: " + root.reasoningLevel : "")
-                    color: root.muted
-                    font.family: Style.font.family
-                    font.pixelSize: 11
-                    elide: Text.ElideRight
-                  }
-                  Item { Layout.fillWidth: true; visible: root.modelName === "" }
-                  ViewButton {
-                    text: "Chat"
-                    checked: root.formattedView
-                    enabled: root.blocksJson !== "[]"
-                    onClicked: { root.chatView = true; root.saveState() }
-                    ToolTip.visible: hovered
-                    ToolTip.text: "Formatted Codex conversation"
-                  }
-                  ViewButton {
-                    text: "Terminal"
-                    checked: !root.chatView || root.blocksJson === "[]"
-                    onClicked: { root.chatView = false; root.saveState() }
-                  }
-                }
 
                 Rectangle {
                   visible: root.selectedWorking || root.sending
