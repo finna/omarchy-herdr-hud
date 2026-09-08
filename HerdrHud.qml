@@ -823,76 +823,6 @@ Item {
           anchors.margins: 18
           spacing: 12
 
-          RowLayout {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 46
-            spacing: 12
-
-            Text {
-              text: "HERDR"
-              color: root.gold
-              font.family: Style.font.family
-              font.pixelSize: 25
-              font.bold: true
-            }
-
-            Rectangle {
-              width: 1
-              height: 26
-              color: root.alpha(root.foreground, 0.22)
-            }
-
-            Text {
-              Layout.fillWidth: true
-              text: root.demoMode ? "Preview · fictional agents" : root.connected
-                ? root.agents.length + " agent" + (root.agents.length === 1 ? "" : "s") + " connected"
-                : "Herdr unavailable"
-              color: root.muted
-              font.family: Style.font.family
-              font.pixelSize: 14
-              elide: Text.ElideRight
-            }
-
-            Button {
-              text: "Refresh"
-              onClicked: root.refreshRoster()
-              background: Rectangle {
-                color: parent.hovered ? root.alpha(root.foreground, 0.14) : root.alpha(root.foreground, 0.07)
-                radius: 8
-                border.width: 1
-                border.color: root.alpha(root.foreground, 0.2)
-              }
-              contentItem: Text {
-                text: parent.text
-                color: root.foreground
-                font.family: Style.font.family
-                font.pixelSize: 13
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-              }
-            }
-
-            Button {
-              text: "×"
-              implicitWidth: 42
-              implicitHeight: 38
-              onClicked: root.requestClose()
-              background: Rectangle {
-                color: parent.hovered ? root.alpha(root.foreground, 0.14) : root.alpha(root.foreground, 0.07)
-                radius: 8
-                border.width: 1
-                border.color: root.alpha(root.foreground, 0.2)
-              }
-              contentItem: Text {
-                text: parent.text
-                color: root.foreground
-                font.pixelSize: 22
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-              }
-            }
-          }
-
           Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -916,7 +846,8 @@ Item {
 
                   Text {
                     Layout.fillWidth: true
-                    text: "AGENTS · ATTENTION FIRST"
+                    text: root.demoMode ? "HERDR · PREVIEW" : root.connected
+                      ? "HERDR · " + root.agents.length + " AGENTS" : "HERDR · OFFLINE"
                     color: root.muted
                     font.family: Style.font.family
                     font.pixelSize: 11
@@ -1226,7 +1157,7 @@ Item {
                     }
                     Text {
                       Layout.fillWidth: true
-                      text: root.errorText + "\nInstall or start Herdr, then choose Refresh."
+                      text: root.errorText + "\nInstall or start Herdr. Reconnecting automatically."
                       color: root.muted
                       wrapMode: Text.Wrap
                       font.family: Style.font.family
