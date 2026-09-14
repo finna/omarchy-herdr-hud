@@ -3,6 +3,7 @@ from importlib.machinery import SourceFileLoader
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -38,28 +39,21 @@ class BridgeTests(unittest.TestCase):
 
     def test_run_passes_literal_arguments_without_a_shell(self):
         unsafe = "$(touch /tmp/herdr-hud-must-not-exist); `false`"
-        completed = subprocess.CompletedProcess([], 0, stdout="ok", stderr="")
-        with patch.object(bridge.subprocess, "run", return_value=completed) as run:
-            bridge.run(["herdr", "agent", "prompt", "w2:p1", unsafe])
-        self.assertEqual(run.call_args.args[0][-1], unsafe)
-        self.assertFalse(run.call_args.kwargs.get("shell", False))
+        result = bridge.run([sys.executable, "-c", "import sys;print(sys.argv[1],end='')", unsafe])
+        self.assertEqual(result, unsafe)
 
     def test_missing_command_and_timeout_have_actionable_errors(self):
-        cases = [
-            (FileNotFoundError(), "is not installed"),
-            (subprocess.TimeoutExpired(["herdr"], 12), "did not respond in time"),
-        ]
-        for error, message in cases:
-            with self.subTest(message=message), patch.object(bridge.subprocess, "run", side_effect=error):
-                with self.assertRaisesRegex(bridge.BridgeError, message):
-                    bridge.run(["herdr"])
+        with self.assertRaisesRegex(bridge.BridgeError, "is not installed"):
+            bridge.run(["/does-not-exist/herdr"])
+        with self.assertRaisesRegex(bridge.BridgeError, "did not respond in time"):
+            bridge.run([sys.executable, "-c", "import time;time.sleep(10)"], timeout=0.1)
 
     def test_prompt_rechecks_agent_identity_and_readiness(self):
         with patch.object(bridge, "agents", return_value=[self.agent]), patch.object(
-            bridge, "herdr", return_value=""
+            bridge, "send_prompt", return_value=None
         ) as herdr:
             bridge.prompt("w2:p1", "original", "hello")
-        herdr.assert_called_once_with("agent", "prompt", "w2:p1", "hello")
+        herdr.assert_called_once_with("w2:p1", "original", "hello")
 
         invalid_rows = [
             [],

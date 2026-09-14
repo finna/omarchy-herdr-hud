@@ -4,6 +4,13 @@
 from __future__ import annotations
 
 import json
+import ctypes
+import os
+import selectors
+import signal
+import socket
+import time
+import uuid
 import hashlib
 import html
 import re
@@ -21,42 +28,196 @@ class BridgeError(RuntimeError):
     pass
 
 
-def run(argv: list[str], timeout: int = TIMEOUT) -> str:
+# Limits apply while reading, before decoding/formatting or handing data to QML.
+STDOUT_LIMIT = 1024 * 1024
+STDERR_LIMIT = 64 * 1024
+PROMPT_LIMIT = 64 * 1024
+RESPONSE_LIMIT = 8 * 1024 * 1024
+ERROR_LIMIT = 4096
+
+
+def run(argv: list[str], timeout: float = TIMEOUT, *, input_data: bytes | None = None) -> str:
+    if input_data is not None and len(input_data) > PROMPT_LIMIT:
+        raise BridgeError("Prompt exceeds the 64 KiB limit")
+    # Linux subreaper: orphaned grandchildren in this command's process group
+    # become our children, so timeout cleanup can reap them as well as the leader.
+    if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
+        raise BridgeError("Could not enable command process cleanup")
     try:
-        result = subprocess.run(
-            argv,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-        )
+        process = subprocess.Popen(argv, stdin=subprocess.PIPE if input_data is not None else subprocess.DEVNULL,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
     except FileNotFoundError as error:
         raise BridgeError(f"{argv[0]} is not installed") from error
-    except subprocess.TimeoutExpired as error:
-        raise BridgeError(f"{argv[0]} did not respond in time") from error
-    if result.returncode:
-        detail = result.stderr.strip() or result.stdout.strip()
-        raise BridgeError(detail or f"{argv[0]} exited with status {result.returncode}")
-    return result.stdout
+    buffers = {"stdout": bytearray(), "stderr": bytearray()}
+    deadline = time.monotonic() + timeout
+    try:
+        with selectors.DefaultSelector() as selector:
+            for stream, name in [(process.stdout, "stdout"), (process.stderr, "stderr")]:
+                os.set_blocking(stream.fileno(), False)
+                selector.register(stream, selectors.EVENT_READ, name)
+            pending = memoryview(input_data or b"")
+            if process.stdin is not None:
+                os.set_blocking(process.stdin.fileno(), False)
+                if pending:
+                    selector.register(process.stdin, selectors.EVENT_WRITE, "stdin")
+                else:
+                    process.stdin.close()
+            while selector.get_map() or process.poll() is None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise BridgeError(f"{argv[0]} did not respond in time")
+                for key, _ in selector.select(min(remaining, 0.05)):
+                    stream, name = key.fileobj, key.data
+                    if name == "stdin":
+                        try:
+                            pending = pending[os.write(stream.fileno(), pending[:4096]):]
+                        except BrokenPipeError:
+                            pending = memoryview(b"")
+                        if not pending:
+                            selector.unregister(stream)
+                            stream.close()
+                        continue
+                    limit = STDOUT_LIMIT if name == "stdout" else STDERR_LIMIT
+                    chunk = os.read(stream.fileno(), min(16384, limit - len(buffers[name]) + 1))
+                    if not chunk:
+                        selector.unregister(stream)
+                        stream.close()
+                    elif len(buffers[name]) + len(chunk) > limit:
+                        raise BridgeError(f"Command {name} exceeded the {limit}-byte limit")
+                    else:
+                        buffers[name].extend(chunk)
+        if process.returncode:
+            detail = (buffers["stderr"] or buffers["stdout"])[:ERROR_LIMIT].decode("utf-8", errors="replace").strip()
+            raise BridgeError(detail or f"{argv[0]} exited with status {process.returncode}")
+        return buffers["stdout"].decode("utf-8", errors="replace")
+    finally:
+        # Kill the whole owned group, even if the leader exited but a child kept
+        # its pipes open. Never use unbounded communicate() to drain on failure.
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait()
+        while True:
+            try:
+                os.waitpid(-process.pid, 0)
+            except ChildProcessError:
+                break
+        for stream in (process.stdin, process.stdout, process.stderr):
+            if stream is not None:
+                stream.close()
+
+
+def backend_config() -> dict:
+    config = Path.home() / ".config/herdr-hud/backend.json"
+    if not config.exists():
+        return {}
+    try:
+        value = json.loads(config.read_text())
+        if not isinstance(value, dict):
+            raise ValueError("expected an object")
+        for key in ("command", "prompt_command"):
+            if key not in value:
+                continue
+            command = value[key]
+            if not isinstance(command, list) or not command or not all(isinstance(x, str) and x and "\0" not in x for x in command):
+                raise ValueError(f"{key} must be a nonempty list of strings")
+        return value
+    except (OSError, ValueError, TypeError) as error:
+        raise BridgeError(f"Invalid HUD backend configuration: {error}") from error
 
 
 def herdr(*args: str) -> str:
-    config = Path.home() / ".config/herdr-hud/backend.json"
-    command = ["herdr"]
-    if config.exists():
-        try:
-            command = json.loads(config.read_text())["command"]
-            if not isinstance(command, list) or not command or not all(isinstance(x, str) and x for x in command):
-                raise ValueError("command must be a nonempty list of strings")
-        except (OSError, ValueError, KeyError, TypeError) as error:
-            raise BridgeError(f"Invalid HUD backend configuration: {error}") from error
+    command = backend_config().get("command", ["herdr"])
     if shutil.which(command[0]) is None:
         raise BridgeError("Herdr is not installed or is not on PATH")
     return run([*command, *args])
 
 
+def socket_request(path: str, method: str, params: dict, timeout: float = TIMEOUT) -> dict:
+    request_id = str(uuid.uuid4())
+    wire = (json.dumps({"id": request_id, "method": method, "params": params}) + "\n").encode()
+    deadline = time.monotonic() + timeout
+    data = bytearray()
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+        connection.settimeout(timeout)
+        connection.connect(path)
+        connection.sendall(wire)
+        while b"\n" not in data:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise BridgeError("Herdr socket did not respond in time")
+            connection.settimeout(remaining)
+            chunk = connection.recv(min(16384, STDOUT_LIMIT - len(data) + 1))
+            if not chunk:
+                raise BridgeError("Herdr closed the connection before acknowledging")
+            if len(data) + len(chunk) > STDOUT_LIMIT:
+                raise BridgeError("Herdr socket response exceeded the byte limit")
+            data.extend(chunk)
+    result = json.loads(data.split(b"\n", 1)[0])
+    if not isinstance(result, dict) or result.get("id") != request_id:
+        raise BridgeError("Herdr returned an invalid acknowledgement")
+    if "error" in result:
+        raise BridgeError("Herdr rejected the request: " + str(result["error"])[:ERROR_LIMIT])
+    if not isinstance(result.get("result"), dict):
+        raise BridgeError("Herdr returned an invalid acknowledgement")
+    return result["result"]
+
+
+def send_prompt(pane_id: str, terminal_id: str, message: str) -> None:
+    config = backend_config()
+    if "command" in config or "prompt_command" in config:
+        command = config.get("prompt_command")
+        if not command:
+            raise BridgeError("Custom backend needs a stdin-capable prompt_command; no prompt was sent")
+        # Explicit adapter contract: target and expected terminal as arguments,
+        # raw UTF-8 prompt on stdin; success must acknowledge the accepted write.
+        result = json.loads(run([*command, pane_id, terminal_id], input_data=message.encode()))
+        if not isinstance(result, dict) or result.get("ok") is not True:
+            raise BridgeError("Custom backend did not acknowledge the prompt")
+        return
+    status = herdr("status", "server")
+    path = next((line[len("socket: "):].strip() for line in status.splitlines() if line.startswith("socket: ")), "")
+    if not path:
+        raise BridgeError("Could not locate the running Herdr socket; no prompt was sent")
+    # The CLI does not accept prompt stdin. Use the same public socket method,
+    # rechecking the occupant at this socket before writing.
+    agent = socket_request(path, "agent.get", {"target": pane_id}).get("agent", {})
+    if agent.get("terminal_id") != terminal_id or agent.get("agent_status") not in {"idle", "done"}:
+        raise BridgeError("This agent changed or is no longer ready; no prompt was sent")
+    result = socket_request(path, "agent.prompt", {"target": pane_id, "text": message})
+    accepted = result.get("agent", {})
+    if result.get("type") != "agent_prompted" or accepted.get("terminal_id") != terminal_id:
+        raise BridgeError("Herdr returned an unexpected prompt acknowledgement")
+
+
+def read_prompt() -> str:
+    # QML sends one JSON string line. Bound both time and encoded input size.
+    data = bytearray()
+    deadline = time.monotonic() + TIMEOUT
+    with selectors.DefaultSelector() as selector:
+        selector.register(sys.stdin.buffer, selectors.EVENT_READ)
+        while b"\n" not in data:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not selector.select(remaining):
+                raise BridgeError("Prompt input timed out")
+            chunk = os.read(sys.stdin.fileno(), min(4096, PROMPT_LIMIT * 6 + 3 - len(data)))
+            if not chunk:
+                raise BridgeError("Missing prompt input")
+            data.extend(chunk)
+            if len(data) >= PROMPT_LIMIT * 6 + 3:
+                raise BridgeError("Prompt exceeds the 64 KiB limit")
+    message = json.loads(data.split(b"\n", 1)[0])
+    if not isinstance(message, str) or len(message.encode()) > PROMPT_LIMIT:
+        raise BridgeError("Prompt must be text of at most 64 KiB")
+    return message
+
+
 def response(payload: Any) -> None:
-    print(json.dumps(payload, ensure_ascii=False))
+    encoded = json.dumps(payload, ensure_ascii=False)
+    if len(encoded.encode()) > RESPONSE_LIMIT:
+        raise BridgeError("HUD response exceeded the byte limit")
+    print(encoded)
 
 
 def agents() -> list[dict[str, Any]]:
@@ -236,7 +397,12 @@ def prompt(pane_id: str, terminal_id: str, message: str) -> None:
         raise BridgeError("Wait until this agent is ready before sending a prompt.")
     if not message.strip():
         raise BridgeError("Enter a prompt first.")
-    herdr("agent", "prompt", pane_id, message)
+    if len(message.encode()) > PROMPT_LIMIT:
+        raise BridgeError("Prompt exceeds the 64 KiB limit")
+    try:
+        send_prompt(pane_id, terminal_id, message)
+    except (BridgeError, OSError, ValueError) as error:
+        raise BridgeError(f"{str(error)[:ERROR_LIMIT]} — delivery may be uncertain; check Herdr before sending again.") from error
     response({"ok": True})
 
 
@@ -256,8 +422,8 @@ def main(argv: list[str]) -> int:
         roster()
     elif command == "output" and len(argv) in {3, 4}:
         output(argv[2], argv[3] if len(argv) == 4 else "")
-    elif command == "prompt" and len(argv) == 5:
-        prompt(argv[2], argv[3], argv[4])
+    elif command == "prompt" and len(argv) == 4:
+        prompt(argv[2], argv[3], read_prompt())
     elif command == "focused-screen" and len(argv) == 2:
         focused_screen()
     else:
@@ -268,6 +434,6 @@ def main(argv: list[str]) -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main(sys.argv))
-    except (BridgeError, json.JSONDecodeError) as error:
-        print(str(error), file=sys.stderr)
+    except (BridgeError, OSError, ValueError) as error:
+        print(str(error)[:ERROR_LIMIT], file=sys.stderr)
         raise SystemExit(1)

@@ -540,8 +540,7 @@ Item {
       bridgePath,
       "prompt",
       selectedPane,
-      String(agent.terminal_id || ""),
-      String(message)
+      String(agent.terminal_id || "")
     ])
   }
 
@@ -645,6 +644,8 @@ Item {
 
   Process {
     id: promptProc
+    stdinEnabled: true
+    onStarted: write(JSON.stringify(root.promptMessage) + "\n")
     stdout: StdioCollector { id: promptOut; waitForEnd: true }
     stderr: StdioCollector { id: promptErr; waitForEnd: true }
     onExited: function(exitCode) {

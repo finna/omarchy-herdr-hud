@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.15
+
+- Keep prompt text out of process arguments: QML sends JSON over stdin, and the bridge uses Herdr’s local socket API for prompt delivery.
+- Require an explicit stdin-capable prompt command for custom adapters; never fall back to an argv-based prompt.
+- Bound command stdout/stderr while reading, cap prompts and serialized HUD responses, and kill/reap the owned command process group on timeout or overflow.
+- Preserve agent identity/readiness checks and report uncertain delivery without retrying.
+
 ## 1.0.14
 
 - Extend chat to the top of the compact panel; move branding and agent count into the sidebar.

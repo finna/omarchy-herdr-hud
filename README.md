@@ -1,12 +1,5 @@
 # Herdr HUD for Omarchy
 
-For a private custom backend, `~/.config/herdr-hud/backend.json` may contain a
-`command` argument array, such as `{"command":["/path/to/herdr-adapter"]}`.
-The bridge appends Herdr CLI arguments directly without a shell. The adapter
-must preserve the CLI JSON shapes and uniquely scope agent and terminal IDs
-when combining machines. Omit this file for the normal local Herdr connection.
-Machine addresses and credentials belong in local configuration, not the plugin.
-
 Herdr HUD keeps your [Herdr](https://herdr.dev/) agents inside your game. A small draggable **H** button stays above fullscreen apps; click it or use a keybind to open a larger terminal and prompt panel without minimizing the game.
 
 ![Herdr HUD opening and closing over a fullscreen terminal](assets/demo.gif)
@@ -32,14 +25,14 @@ Herdr HUD keeps your [Herdr](https://herdr.dev/) agents inside your game. A smal
 ## Requirements
 
 - Omarchy Quattro with `omarchy-shell`
-- [Herdr](https://herdr.dev/) installed and available as `herdr`
+- [Herdr](https://herdr.dev/) 0.9.0 or later installed and running, available as `herdr`
 - Python 3 (included with Omarchy)
 
 The panel shows a setup message when Herdr is missing or unavailable.
 
 Chat view formats recognized Codex terminal patterns, rather than reading a structured message history. It shows the recent captured output, preserves unrecognized context, and displays plain captured output when formatted blocks are unavailable.
 
-Herdr HUD talks only to the local `herdr` and `hyprctl` commands. It does not add a service, request elevated privileges, or send data to a separate server.
+By default, Herdr HUD reads through the local `herdr` and `hyprctl` commands and sends prompts through Herdr’s local socket API. It does not add a service, request elevated privileges, or send data to a separate server.
 
 ## Install
 
@@ -91,14 +84,59 @@ rm -rf ~/.config/herdr-hud
 
 Remove your Herdr HUD keybind from `~/.config/hypr/bindings.lua` as well, if you added one.
 
+## Prompt privacy and process limits
+
+Prompt text travels from QML to the bridge as a JSON string on stdin, then directly
+to Herdr's local `agent.prompt` socket method. It never appears in command-line
+arguments. The bridge asks `herdr status server` for the socket of the selected
+session, rechecks the selected terminal and readiness, and validates the prompt
+acknowledgement. A failed or ambiguous submission is never automatically retried;
+check Herdr before manually sending again. Herdr's API does not provide an atomic
+expected-terminal guard, so the preflight check cannot eliminate every concurrent
+pane-replacement race.
+
+Every child command has a 12-second deadline (3 seconds for monitor queries),
+1 MiB stdout and 64 KiB stderr limits enforced while streaming. On overflow or
+timeout, the bridge kills the owned process group and reaps its children,
+including orphaned descendants in that group. It does not buffer an unlimited
+response and truncate afterward. Prompts are limited to 64 KiB UTF-8; serialized
+HUD responses to 8 MiB; displayed errors to 4096 characters. Oversized responses
+produce an error instead of reaching the shell collector.
+
+## Custom backends
+
+Optional `~/.config/herdr-hud/backend.json` can provide command arrays:
+
+```json
+{
+  "command": ["/path/to/read-adapter"],
+  "prompt_command": ["/path/to/stdin-prompt-adapter"]
+}
+```
+
+The read adapter receives Herdr CLI arguments and must preserve the CLI JSON
+shapes, uniquely scoping agent and terminal IDs when combining machines.
+The prompt adapter receives **only pane ID and expected terminal ID** as two
+appended arguments and the **raw UTF-8 message on stdin**, closed after writing.
+It must validate the current target/readiness, retain stdin or socket transport
+through any remote hops, and return `{"ok":true}` only after acknowledging delivery.
+Never copy prompt text into an SSH command string or another process's arguments.
+
+An older adapter with only `command` remains usable for reading but cannot send
+prompts until `prompt_command` is configured. This is deliberate: the bridge never
+falls back to exposing text in argv, nor routes an adapter target to the local
+server. Omit the file for normal local Herdr. Machine addresses and credentials
+belong in local configuration, not this repository.
+
 ## Development
 
 ```bash
 omarchy plugin validate .
 python -m unittest discover -s tests -v
+node --test tests/*.mjs
 ```
 
-The QML UI uses Omarchy's plugin lifecycle and Quickshell layer surfaces. `bin/herdr-hud` is a standard-library-only bridge that invokes Herdr with argument arrays, rechecks the selected agent before prompting, and never evaluates prompt text in a shell.
+The QML UI uses Omarchy's plugin lifecycle and Quickshell layer surfaces. `bin/herdr-hud` is a standard-library-only bridge that invokes Herdr with argument arrays, rechecks the selected agent before prompting, and never evaluates prompt text in a shell. The tests use controlled processes and a fake socket server; no test prompts are sent to user agents. When Quickshell is available, an offscreen test runs the actual QML submit function and stdin wiring through a fake backend.
 
 For a screenshot with fictional agents and prompt sending disabled:
 
