@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.17
+
+- Add a persistent Omarchy / WoW UI toggle in the top toolbar.
+- Use square Omarchy controls and an independent WoW palette with beveled bronze frames.
+- Keep the resize divider invisible and remove the toolbar background.
+- Move keyboard hints into the full-width prompt field and send with Ctrl+Enter only.
+- Check mode switching, palette independence, and full QML compilation.
+
+## 1.0.16
+
+- Follow Omarchy popup colors and theme accents throughout the HUD instead of a fixed gold palette.
+- Render popup borders with the shell component, preserving gradients, opacity, and per-side widths.
+- Adapt terminal shading and launcher label contrast to light and dark themes; refresh formatted conversation colors live.
+- Expose active theme colors in HUD state diagnostics.
+- Check full QML compilation and live theme bindings against installed Omarchy components.
+
 ## 1.0.15
 
 - Keep prompt text out of process arguments: QML sends JSON over stdin, and the bridge uses Herdr’s local socket API for prompt delivery.

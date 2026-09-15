@@ -17,7 +17,7 @@ Herdr HUD keeps your [Herdr](https://herdr.dev/) agents inside your game. A smal
 - See a persistent animated working indicator, including when no new terminal output is arriving. Its elapsed timer shows how long HUD has observed the agent working.
 - Prompt ready agents without switching windows.
 - Green attention badge for blocked agents and unseen status changes.
-- Silent alerts beside H when an agent finishes or needs input while the panel is closed. Click to open that agent, hover to keep the alert visible, or dismiss it with ×. Alerts disappear after eight seconds; the unread badge remains. Codex alerts include a short reply preview when available.
+- Silent alerts beside H when an agent finishes or needs input while the panel is closed. Click to open that agent or dismiss with ×. Completion alerts disappear after eight seconds, paused on hover; input requests stay until dismissed, opened, or the agent changes status. Cards grow with their preview up to eight lines; the unread badge remains.
 - Drag the H button anywhere; its position is saved separately for each monitor.
 - Drag the roster divider to give the terminal more room.
 - Appears over fullscreen apps and games on Omarchy's Hyprland desktop.
@@ -147,3 +147,45 @@ omarchy-shell shell summon finna.herdr-hud '{"demo":true}'
 Closing the preview restores the real roster. Review the surrounding desktop before sharing captures.
 
 Herdr HUD is a community project and is not affiliated with Herdr or Basecamp.
+
+### UI modes
+
+The top toolbar starts with a `UI: Omarchy` / `UI: WoW` toggle. The selected
+mode is saved with the HUD state and restored when the shell restarts.
+Omarchy mode uses square panel and control corners. WoW mode uses an
+independent dark brown and gold palette, serif labels, and layered bronze
+frames with small cut corners. Switching back picks up the current Omarchy
+theme immediately.
+
+The adjacent `Alerts: On` / `Alerts: Off` button enables or disables completion
+and input-request popups. The setting persists across restarts. Disabling alerts
+clears pending popups but leaves unread counts intact; alerts default to on.
+Alerts share the panel background and frame: Omarchy popup borders in Omarchy
+mode, and the layered bronze WoW frame in WoW mode. Status colors are limited
+to the alert heading.
+
+### Omarchy themes
+
+The HUD follows the active shell popup background, text, and border roles.
+Popup borders use Omarchy's `BorderSurface`, including gradients, opacity,
+and per-side widths from `shell.toml`. Highlights use the theme accent;
+terminal shading and bubble labels adapt to light and dark backgrounds.
+Theme changes also refresh colors in the formatted conversation.
+This requires an Omarchy shell with `qs.Ui.BorderSurface` support.
+
+`tests/test_qml_theme.py` checks full component compilation with Wayland, live
+palette changes, and border rendering selection against the installed Omarchy QML components, without switching
+the desktop theme or contacting agents.
+
+If a plugin reload keeps showing the previous colors after upgrading, run
+`omarchy restart shell` once to clear the cached QML component.
+
+### Launcher styles
+
+Right-click the launcher to cycle through circle, square, small circle, small
+square, a narrow `herdr` label, and a bronze WoW medallion. Left-click still
+toggles the HUD; drag with the left button to move it. The chosen shape is
+saved independently of the Omarchy / WoW panel mode.
+Normal launchers follow the current Omarchy theme even when the panel uses
+WoW mode. The WoW medallion keeps its fixed colors regardless of the theme
+or panel mode.
