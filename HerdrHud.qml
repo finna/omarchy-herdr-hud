@@ -5,6 +5,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
+import qs.Ui as Ui
 import "Roster.js" as Roster
 import "Alerts.js" as Alerts
 
@@ -35,7 +36,10 @@ Item {
   readonly property var sortedAgents: Roster.sorted(agents, unread)
   property var lastSequence: ({})
   property var alertQueue: []
+  property bool alertsEnabled: true
+  onAlertsEnabledChanged: if (!alertsEnabled) clearAlerts()
   property var activeAlert: null
+  readonly property bool activeAlertNeedsInput: !!activeAlert && activeAlert.agent_status === "blocked"
   property string alertPreview: ""
   property bool alertHovered: false
   property string previewIdentity: ""
@@ -73,18 +77,67 @@ Item {
   property int stateRevision: 0
   property bool stateReady: false
 
-  readonly property color foreground: Color.foreground
-  readonly property color background: Color.background
-  readonly property color accent: Color.accent
-  readonly property color urgent: Color.urgent
-  readonly property color success: "#79dc94"
-  readonly property color working: "#d5b46b"
-  readonly property color gold: "#e8c67c"
-  readonly property color muted: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.62)
-  readonly property color panelFill: Qt.rgba(background.r, background.g, background.b, 1)
-  readonly property color terminalFill: Qt.rgba(0.035, 0.045, 0.052, 1)
+  property string uiMode: "omarchy"
+  readonly property bool wowMode: uiMode === "wow"
+  readonly property int cornerRadius: wowMode ? 4 : 0
+  readonly property string chromeFont: wowMode ? "Georgia" : Style.font.family
+
+  function toggleUiMode() {
+    uiMode = wowMode ? "omarchy" : "wow"
+    saveState()
+  }
+
+  function toggleAlerts() {
+    alertsEnabled = !alertsEnabled
+    saveState()
+  }
+
+  // Bind to shell roles so theme changes update existing surfaces and HTML.
+  readonly property color foreground: wowMode ? "#e8dfca" : Color.popups.text
+  readonly property color background: wowMode ? "#17110c" : Color.popups.background
+  readonly property color accent: wowMode ? "#d5ad55" : Color.accent
+  readonly property color urgent: wowMode ? "#db6555" : Color.urgent
+  readonly property color success: wowMode ? "#66bd69" : accent
+  readonly property color working: wowMode ? "#d5ad55" : accent
+  readonly property color muted: Qt.tint(alpha(background, 1), alpha(foreground, 0.62))
+  readonly property color panelFill: background
+  readonly property var panelBorderSpec: wowMode ? Border.flat("#80613a", 2) : Border.surfaceSpec("popups", "border", accent, 2)
+  readonly property color panelBorder: Border.color(panelBorderSpec)
+  // A subtle foreground tint works on both light and dark popup backgrounds.
+  readonly property color terminalFill: wowMode ? "#100d09" : Qt.tint(background, alpha(foreground, 0.035))
+  readonly property color accentText: contrastColor(accent, foreground, background)
+
+  function contrastColor(fill, light, dark) {
+    function linear(v) { return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4) }
+    function luminance(c) { return 0.2126 * linear(c.r) + 0.7152 * linear(c.g) + 0.0722 * linear(c.b) }
+    function contrast(c) {
+      var a = luminance(fill), b = luminance(c)
+      return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
+    }
+    return contrast(light) >= contrast(dark) ? light : dark
+  }
   readonly property int edgeGap: 16
-  readonly property int bubbleSize: 54
+  property int launcherStyle: 0
+  readonly property color launcherAccent: launcherStyle === 5 ? "#d5ad55" : Color.accent
+  readonly property color launcherBackground: launcherStyle === 5 ? "#17110c" : Color.popups.background
+  readonly property color launcherText: contrastColor(launcherAccent, launcherStyle === 5 ? "#e8dfca" : Color.popups.text, launcherBackground)
+  readonly property color launcherSuccess: launcherStyle === 5 ? "#66bd69" : launcherAccent
+  readonly property int bubbleWidth: launcherStyle === 4 ? 96 : (launcherStyle === 2 || launcherStyle === 3 ? 32 : 54)
+  readonly property int bubbleHeight: launcherStyle === 4 ? 28 : (launcherStyle === 2 || launcherStyle === 3 ? 32 : 54)
+  readonly property real bubbleRadius: launcherStyle === 0 || launcherStyle === 2 ? bubbleWidth / 2 : 0
+
+  function cycleLauncherStyle() {
+    launcherStyle = (launcherStyle + 1) % 6
+    stateRevision++
+    // Re-clamp after size changes, including launchers that were dragged.
+    for (var i = 0; i < screenViews.instances.length; i++) {
+      var view = screenViews.instances[i]
+      var position = positionFor(view.screenName, view.width, view.height)
+      view.bubbleX = position.x
+      view.bubbleY = position.y
+    }
+    saveState()
+  }
 
   function alpha(color, value) {
     return Qt.rgba(color.r, color.g, color.b, value)
@@ -112,10 +165,10 @@ Item {
     stateRevision
     var saved = positions[name] || {}
     return {
-      x: clamp(Number(saved.x === undefined ? width - bubbleSize - edgeGap : saved.x),
-               edgeGap, Math.max(edgeGap, width - bubbleSize - edgeGap)),
+      x: clamp(Number(saved.x === undefined ? width - bubbleWidth - edgeGap : saved.x),
+               edgeGap, Math.max(edgeGap, width - bubbleWidth - edgeGap)),
       y: clamp(Number(saved.y === undefined ? 150 : saved.y),
-               edgeGap, Math.max(edgeGap, height - bubbleSize - edgeGap))
+               edgeGap, Math.max(edgeGap, height - bubbleHeight - edgeGap))
     }
   }
 
@@ -135,6 +188,9 @@ Item {
     try {
       var parsed = JSON.parse(String(raw || ""))
       if (parsed && typeof parsed === "object") {
+        if (Number.isInteger(parsed.launcherStyle) && parsed.launcherStyle >= 0 && parsed.launcherStyle < 6) launcherStyle = parsed.launcherStyle
+        if (parsed.uiMode === "wow" || parsed.uiMode === "omarchy") uiMode = parsed.uiMode
+        if (typeof parsed.alertsEnabled === "boolean") alertsEnabled = parsed.alertsEnabled
         if (typeof parsed.overlayVisible === "boolean") overlayVisible = parsed.overlayVisible
         if (parsed.positions && typeof parsed.positions === "object") positions = parsed.positions
         if (Number(parsed.rosterWidth) > 0) rosterWidth = clamp(Number(parsed.rosterWidth), 150, 330)
@@ -150,6 +206,9 @@ Item {
     if (!stateReady) return
     stateFile.setText(JSON.stringify({
       version: 1,
+      uiMode: uiMode,
+      alertsEnabled: alertsEnabled,
+      launcherStyle: launcherStyle,
       overlayVisible: overlayVisible,
       positions: positions,
       rosterWidth: Math.round(rosterWidth)
@@ -237,6 +296,15 @@ Item {
       overlayVisible: overlayVisible,
       panelScreenName: panelScreenName,
       bridgePath: bridgePath,
+      uiMode: uiMode,
+      launcherStyle: launcherStyle,
+      theme: {
+        background: String(background),
+        foreground: String(foreground),
+        accent: String(accent),
+        border: String(panelBorder),
+        borderGradient: panelBorderSpec.gradient.enabled
+      },
       screens: screenViews.instances.length,
       agents: agents.length,
       demoMode: demoMode,
@@ -251,7 +319,8 @@ Item {
       outputChars: outputText.length,
       view: formattedView ? "chat" : "terminal",
       conversationBlocks: JSON.parse(blocksJson).length,
-      alertVisible: !!activeAlert && overlayVisible && !opened,
+      alertsEnabled: alertsEnabled,
+      alertVisible: alertsEnabled && !!activeAlert && overlayVisible && !opened,
       alertPane: activeAlert ? activeAlert.pane_id : "",
       rosterOrder: sortedAgents.map(function(agent) { return String(agent.pane_id || "") }),
       notice: noticeText,
@@ -398,7 +467,7 @@ Item {
   }
 
   function queueAlert(agent) {
-    if (opened || !overlayVisible) return
+    if (!alertsEnabled || opened || !overlayVisible) return
     var next = alertQueue.slice()
     next.push(agent)
     alertQueue = next.slice(-5)
@@ -407,16 +476,19 @@ Item {
 
   function showNextAlert() {
     activeAlert = null
-    if (!alertQueue.length || opened || !overlayVisible) return
+    if (!alertsEnabled || !alertQueue.length || opened || !overlayVisible) return
     var next = alertQueue.slice()
     var agent = next.shift()
     alertQueue = next
     var live = agentForPane(String(agent.pane_id))
-    if (!live || live.terminal_id !== agent.terminal_id || live.agent_status === "working") {
+    if (!live || live.terminal_id !== agent.terminal_id || live.agent_status !== agent.agent_status) {
       showNextAlert()
       return
     }
     activeAlert = agent
+    alertHovered = false
+    completionTimer.restart()
+    if (activeAlertNeedsInput) completionTimer.stop()
     alertPreview = agent.agent_status === "blocked" ? "Open the agent to see what needs your input."
       : "Open the agent to read its latest reply."
     if (!alertPreviewProc.running && agent.agent_status !== "blocked") {
@@ -496,7 +568,7 @@ Item {
       connected = true
       if (activeAlert) {
         var alertAgent = agentForPane(String(activeAlert.pane_id))
-        if (!alertAgent || alertAgent.terminal_id !== activeAlert.terminal_id || alertAgent.agent_status === "working") showNextAlert()
+        if (!alertAgent || alertAgent.terminal_id !== activeAlert.terminal_id || alertAgent.agent_status !== activeAlert.agent_status) showNextAlert()
       }
       completed.forEach(function(agent) { root.queueAlert(agent) })
       errorText = ""
@@ -602,8 +674,9 @@ Item {
   }
 
   Timer {
+    id: completionTimer
     interval: 8000
-    running: !!root.activeAlert && !root.alertHovered
+    running: !!root.activeAlert && !root.activeAlertNeedsInput && !root.alertHovered
     onTriggered: root.showNextAlert()
   }
 
@@ -747,21 +820,21 @@ Item {
           y: bubble.y
           width: bubble.visible ? bubble.width : 0
           height: bubble.visible ? bubble.height : 0
-          radius: bubble.width / 2
+          radius: root.bubbleRadius
         }
         Region {
           x: panelCard.x
           y: panelCard.y
           width: overlayWindow.panelVisible ? panelCard.width : 0
           height: overlayWindow.panelVisible ? panelCard.height : 0
-          radius: 18
+          radius: root.cornerRadius
         }
         Region {
           x: completionAlert.x
           y: completionAlert.y
           width: completionAlert.visible ? completionAlert.width : 0
           height: completionAlert.visible ? completionAlert.height : 0
-          radius: 12
+          radius: root.cornerRadius
         }
       }
 
@@ -771,10 +844,10 @@ Item {
         y: bubble.y + bubble.height / 2 - 1
         width: 12
         height: 2
-        color: root.alpha(root.gold, 0.62)
+        color: root.panelBorder
       }
 
-      Rectangle {
+      Ui.BorderSurface {
         id: panelCard
         visible: overlayWindow.panelVisible
         width: Math.min(800, overlayWindow.panelOnRight
@@ -783,11 +856,16 @@ Item {
         x: overlayWindow.panelOnRight ? bubble.x + bubble.width + 12 : bubble.x - width - 12
         y: root.clamp(bubble.y + bubble.height / 2 - 41,
           root.edgeGap, Math.max(root.edgeGap, parent.height - height - root.edgeGap))
-        color: root.panelFill
-        radius: 18
-        border.width: 2
-        border.color: root.alpha(root.gold, 0.62)
+        color: root.wowMode ? "transparent" : root.panelFill
+        radius: root.cornerRadius
+        borderSpec: root.wowMode ? Border.none() : root.panelBorderSpec
         clip: true
+
+        WowFrame {
+          anchors.fill: parent
+          visible: root.wowMode
+          fillColor: root.panelFill
+        }
 
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: function(event) {
@@ -804,6 +882,82 @@ Item {
 
           Item {
             Layout.fillWidth: true
+            Layout.preferredHeight: 36
+
+            RowLayout {
+              anchors.fill: parent
+              anchors.margins: 4
+              spacing: 12
+
+              Button {
+                id: modeButton
+                text: root.wowMode ? "UI: WoW" : "UI: Omarchy"
+                Layout.preferredWidth: 132
+                Layout.fillHeight: true
+                hoverEnabled: true
+                onClicked: root.toggleUiMode()
+                ToolTip.visible: hovered
+                ToolTip.text: root.wowMode ? "Switch to Omarchy theme" : "Switch to World of Warcraft style"
+                background: Rectangle {
+                  radius: root.cornerRadius
+                  color: modeButton.down ? root.alpha(root.accent, 0.28)
+                    : root.alpha(root.accent, modeButton.hovered ? 0.18 : 0.08)
+                  border.width: 1
+                  border.color: modeButton.activeFocus || modeButton.hovered ? root.accent : root.alpha(root.accent, 0.5)
+                }
+                contentItem: Text {
+                  text: modeButton.text + "  ⇄"
+                  color: root.accent
+                  font.family: root.chromeFont
+                  font.pixelSize: 12
+                  font.bold: true
+                  horizontalAlignment: Text.AlignHCenter
+                  verticalAlignment: Text.AlignVCenter
+                }
+              }
+              Button {
+                id: alertsButton
+                text: root.alertsEnabled ? "Alerts: On" : "Alerts: Off"
+                Layout.preferredWidth: 112
+                Layout.fillHeight: true
+                hoverEnabled: true
+                checkable: true
+                checked: root.alertsEnabled
+                onClicked: root.toggleAlerts()
+                ToolTip.visible: hovered
+                ToolTip.text: "Toggle completion and input-request popups; unread counts stay visible"
+                background: Rectangle {
+                  radius: root.cornerRadius
+                  color: alertsButton.down ? root.alpha(root.accent, 0.28)
+                    : root.alpha(root.accent, alertsButton.hovered ? 0.18 : 0.08)
+                  border.width: 1
+                  border.color: alertsButton.activeFocus || alertsButton.hovered ? root.accent : root.alpha(root.accent, 0.5)
+                }
+                contentItem: Text {
+                  text: alertsButton.text
+                  color: root.accent
+                  font.family: root.chromeFont
+                  font.pixelSize: 12
+                  font.bold: true
+                  horizontalAlignment: Text.AlignHCenter
+                  verticalAlignment: Text.AlignVCenter
+                }
+              }
+              Item { Layout.fillWidth: true }
+              Text {
+                visible: root.wowMode
+                text: "HERDR · Agent Command"
+                color: root.accent
+                font.family: root.chromeFont
+                font.pixelSize: 13
+                font.bold: true
+                Layout.rightMargin: 8
+              }
+            }
+          }
+
+          Item {
+            Layout.fillWidth: true
             Layout.fillHeight: true
 
             RowLayout {
@@ -814,9 +968,9 @@ Item {
                 Layout.preferredWidth: root.rosterWidth
                 Layout.fillHeight: true
                 color: root.alpha(root.foreground, 0.035)
-                radius: 10
+                radius: root.cornerRadius
                 border.width: 1
-                border.color: root.alpha(root.foreground, 0.12)
+                border.color: root.wowMode ? "#614a2f" : root.alpha(root.foreground, 0.12)
 
                 ColumnLayout {
                   anchors.fill: parent
@@ -828,7 +982,7 @@ Item {
                     text: root.demoMode ? "HERDR · PREVIEW" : root.connected
                       ? "HERDR · " + root.agents.length + " AGENTS" : "HERDR · OFFLINE"
                     color: root.muted
-                    font.family: Style.font.family
+                    font.family: root.chromeFont
                     font.pixelSize: 11
                     font.bold: true
                     leftPadding: 5
@@ -853,14 +1007,20 @@ Item {
                           ? "\nModel: " + root.modelName + (root.reasoningLevel ? " · Reasoning: " + root.reasoningLevel : "") : "")
                       width: ListView.view.width
                       height: 86
-                      radius: 9
+                      radius: root.cornerRadius
                       color: String(modelData.pane_id || "") === root.selectedPane
-                        ? root.alpha(root.gold, 0.15)
+                        ? root.alpha(root.accent, 0.15)
                         : (agentMouse.containsMouse ? root.alpha(root.foreground, 0.08) : "transparent")
-                      border.width: 1
+                      border.width: root.wowMode ? 0 : 1
                       border.color: String(modelData.pane_id || "") === root.selectedPane
-                        ? root.alpha(root.gold, 0.72)
+                        ? root.alpha(root.accent, 0.72)
                         : root.alpha(root.foreground, 0.12)
+
+                      WowFrame {
+                        anchors.fill: parent
+                        visible: root.wowMode
+                        z: 1
+                      }
 
                       MouseArea {
                         id: agentMouse
@@ -879,7 +1039,7 @@ Item {
                           Layout.topMargin: 4
                           width: 10
                           height: 10
-                          radius: 5
+                          radius: root.wowMode ? 5 : 0
                           color: root.statusColor(agentRow.modelData)
                         }
 
@@ -890,8 +1050,8 @@ Item {
                           Text {
                             Layout.fillWidth: true
                             text: String(agentRow.modelData.workspace_label || "Untitled space")
-                            color: root.gold
-                            font.family: Style.font.family
+                            color: root.accent
+                            font.family: root.chromeFont
                             font.pixelSize: 15
                             font.bold: true
                             elide: Text.ElideRight
@@ -900,7 +1060,7 @@ Item {
                             Layout.fillWidth: true
                             text: (root.tabName(agentRow.modelData) || String(agentRow.modelData.pane_id || "")) + " · " + root.agentName(agentRow.modelData)
                             color: root.muted
-                            font.family: Style.font.family
+                            font.family: root.chromeFont
                             font.pixelSize: 12
                             elide: Text.ElideRight
                           }
@@ -909,7 +1069,7 @@ Item {
                             text: (root.unread[String(agentRow.modelData.pane_id || "")] ? "Unseen update · " : "")
                               + root.statusLabel(agentRow.modelData)
                             color: root.unread[String(agentRow.modelData.pane_id || "")] ? root.success : root.muted
-                            font.family: Style.font.family
+                            font.family: root.chromeFont
                             font.pixelSize: 11
                             elide: Text.ElideRight
                           }
@@ -922,20 +1082,10 @@ Item {
                 }
               }
 
-              Rectangle {
+              Item {
                 id: rosterDivider
                 Layout.preferredWidth: 10
                 Layout.fillHeight: true
-                color: dividerMouse.containsMouse || dividerMouse.pressed
-                  ? root.alpha(root.gold, 0.35) : "transparent"
-
-                Rectangle {
-                  anchors.centerIn: parent
-                  width: 2
-                  height: parent.height
-                  color: dividerMouse.containsMouse || dividerMouse.pressed
-                    ? root.gold : root.alpha(root.foreground, 0.18)
-                }
 
                 MouseArea {
                   id: dividerMouse
@@ -968,7 +1118,7 @@ Item {
                   color: root.alpha(root.working, 0.12)
                   border.width: 1
                   border.color: root.alpha(root.working, 0.35)
-                  radius: 7
+                  radius: root.cornerRadius
                   RowLayout {
                     anchors.fill: parent
                     anchors.leftMargin: 12
@@ -982,8 +1132,8 @@ Item {
                           required property int index
                           width: 5
                           height: 5
-                          radius: 3
-                          color: root.gold
+                          radius: root.wowMode ? 3 : 0
+                          color: root.accent
                           SequentialAnimation on opacity {
                             running: overlayWindow.panelVisible && (root.selectedWorking || root.sending)
                             loops: Animation.Infinite
@@ -998,8 +1148,8 @@ Item {
                       Layout.fillWidth: true
                       text: root.sending ? "Sending prompt…"
                         : root.agentName(root.agentForPane(root.selectedPane)) + " is working…"
-                      color: root.gold
-                      font.family: Style.font.family
+                      color: root.accent
+                      font.family: root.chromeFont
                       font.pixelSize: 13
                       font.bold: true
                       elide: Text.ElideRight
@@ -1009,7 +1159,7 @@ Item {
                       text: (root.activityNow - root.lastOutputAt > 4000 ? "Waiting for output · " : "Live · ")
                         + root.workingElapsed()
                       color: root.muted
-                      font.family: Style.font.family
+                      font.family: root.chromeFont
                       font.pixelSize: 11
                     }
                   }
@@ -1022,7 +1172,7 @@ Item {
                   Layout.fillWidth: true
                   Layout.fillHeight: true
                   color: root.terminalFill
-                  radius: 8
+                  radius: root.cornerRadius
                   border.width: 1
                   border.color: root.alpha(root.foreground, 0.1)
                   clip: true
@@ -1062,7 +1212,7 @@ Item {
                       selectByMouse: true
                       wrapMode: TextEdit.Wrap
                       color: root.foreground
-                      selectionColor: root.alpha(root.gold, 0.35)
+                      selectionColor: root.alpha(root.accent, 0.35)
                       selectedTextColor: root.foreground
                       font.family: "monospace"
                       font.pixelSize: 13
@@ -1077,7 +1227,7 @@ Item {
                   Layout.fillWidth: true
                   Layout.preferredHeight: visible ? 108 : 0
                   color: root.alpha(root.urgent, 0.08)
-                  radius: 8
+                  radius: root.cornerRadius
                   border.width: 1
                   border.color: root.alpha(root.urgent, 0.35)
 
@@ -1089,7 +1239,7 @@ Item {
                       Layout.fillWidth: true
                       text: "Herdr is not connected"
                       color: root.foreground
-                      font.family: Style.font.family
+                      font.family: root.chromeFont
                       font.pixelSize: 14
                       font.bold: true
                     }
@@ -1098,7 +1248,7 @@ Item {
                       text: root.errorText + "\nInstall or start Herdr. Reconnecting automatically."
                       color: root.muted
                       wrapMode: Text.Wrap
-                      font.family: Style.font.family
+                      font.family: root.chromeFont
                       font.pixelSize: 12
                     }
                   }
@@ -1115,10 +1265,10 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     color: root.alpha(root.foreground, 0.04)
-                    radius: 8
+                    radius: root.cornerRadius
                     border.width: 1
                     border.color: promptArea.activeFocus
-                      ? root.alpha(root.gold, 0.78) : root.alpha(root.foreground, 0.14)
+                      ? root.alpha(root.accent, 0.78) : root.alpha(root.foreground, 0.14)
 
                     ScrollView {
                       anchors.fill: parent
@@ -1128,14 +1278,16 @@ Item {
 
                       TextArea {
                         id: promptArea
-                        placeholderText: root.selectedPane ? "Prompt this agent…" : "Choose an agent first"
+                        placeholderText: root.selectedPane
+                          ? "Ctrl+Enter to send · Esc to close · drag the divider to resize agents"
+                          : "Choose an agent first"
                         enabled: !!root.selectedPane && !root.sending
                         wrapMode: TextEdit.Wrap
                         color: root.foreground
                         placeholderTextColor: root.muted
-                        selectionColor: root.alpha(root.gold, 0.35)
+                        selectionColor: root.alpha(root.accent, 0.35)
                         selectedTextColor: root.foreground
-                        font.family: Style.font.family
+                        font.family: root.chromeFont
                         font.pixelSize: 14
                         padding: 8
                         background: null
@@ -1154,44 +1306,16 @@ Item {
                     }
                   }
 
-                  Button {
-                    Layout.preferredWidth: 118
-                    Layout.fillHeight: true
-                    text: root.sending ? "Sending…" : "Send prompt"
-                    enabled: {
-                      var agent = root.agentForPane(root.selectedPane)
-                      return !root.demoMode && !root.sending && root.isReady(agent) && promptArea.text.trim().length > 0
-                    }
-                    onClicked: root.submitPrompt(promptArea.text)
-                    background: Rectangle {
-                      color: parent.enabled
-                        ? (parent.hovered ? root.alpha(root.gold, 0.55) : root.alpha(root.gold, 0.38))
-                        : root.alpha(root.foreground, 0.06)
-                      radius: 9
-                      border.width: 1
-                      border.color: parent.enabled ? root.alpha(root.gold, 0.75) : root.alpha(root.foreground, 0.12)
-                    }
-                    contentItem: Text {
-                      text: parent.text
-                      color: parent.enabled ? root.foreground : root.muted
-                      font.family: Style.font.family
-                      font.pixelSize: 13
-                      font.bold: true
-                      horizontalAlignment: Text.AlignHCenter
-                      verticalAlignment: Text.AlignVCenter
-                      wrapMode: Text.Wrap
-                    }
-                  }
                 }
 
                 Text {
                   Layout.fillWidth: true
                   Layout.preferredHeight: 20
+                  visible: text.length > 0
                   text: root.noticeText || (root.agentForPane(root.selectedPane)?.agent_status === "blocked"
-                    ? "Approval needed — respond in Herdr to unblock this agent."
-                    : "Ctrl+Enter to send · Esc to close · drag the divider to resize agents")
-                  color: root.noticeText ? root.gold : root.muted
-                  font.family: Style.font.family
+                    ? "Approval needed — respond in Herdr to unblock this agent." : "")
+                  color: root.noticeText ? root.accent : root.muted
+                  font.family: root.chromeFont
                   font.pixelSize: 12
                   elide: Text.ElideRight
                 }
@@ -1201,21 +1325,29 @@ Item {
         }
       }
 
-      Rectangle {
+      Ui.BorderSurface {
         id: completionAlert
         z: 5
-        visible: root.overlayVisible && !root.opened && !!root.activeAlert
+        visible: root.alertsEnabled && root.overlayVisible && !root.opened && !!root.activeAlert
           && overlayWindow.screenName === (root.panelScreenName || root.defaultScreenName())
-        width: Math.min(320, overlayWindow.width - root.edgeGap * 2)
-        height: 126
+        readonly property color statusColor: root.activeAlertNeedsInput ? root.urgent : root.success
+        width: Math.min(380, overlayWindow.width - root.edgeGap * 2)
+        height: alertColumn.implicitHeight + 24
         x: root.clamp(overlayWindow.panelRoomLeft >= width ? bubble.x - width - 12 : bubble.x + bubble.width + 12,
           root.edgeGap, overlayWindow.width - width - root.edgeGap)
         y: root.clamp(bubble.y + bubble.height / 2 - height / 2, root.edgeGap, overlayWindow.height - height - root.edgeGap)
-        radius: 12
-        color: root.panelFill
-        border.width: 1
-        border.color: root.alpha(root.success, 0.6)
+        radius: root.cornerRadius
+        color: root.wowMode ? "transparent" : root.panelFill
+        borderSpec: root.wowMode ? Border.none() : root.panelBorderSpec
+
+        WowFrame {
+          anchors.fill: parent
+          visible: root.wowMode
+          fillColor: root.panelFill
+          z: 0
+        }
         MouseArea {
+          z: 1
           anchors.fill: parent
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
@@ -1224,38 +1356,38 @@ Item {
           onClicked: root.openAlert(overlayWindow.screenName)
         }
         Column {
-          anchors.fill: parent
-          anchors.margins: 14
-          spacing: 6
+          id: alertColumn
+          z: 1
+          anchors.top: parent.top
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.margins: 12
+          spacing: 8
           Text {
             width: parent.width - 24
-            text: root.activeAlert ? String(root.activeAlert.workspace_label || "Agent") : ""
+            text: (root.activeAlertNeedsInput ? "Needs input · " : "Done · ")
+              + (root.activeAlert ? String(root.activeAlert.workspace_label || "Agent") : "")
             textFormat: Text.PlainText
-            font.family: Style.font.family
-            font.pixelSize: 14
+            font.family: root.chromeFont
+            font.pixelSize: 12
             font.bold: true
-            color: root.gold
+            color: completionAlert.statusColor
             elide: Text.ElideRight
-          }
-          Text {
-            text: root.activeAlert && root.activeAlert.agent_status === "blocked" ? "Needs your input" : "Finished working"
-            font.family: Style.font.family
-            font.pixelSize: 11
-            color: root.success
           }
           Text {
             width: parent.width
             text: root.alertPreview
             textFormat: Text.PlainText
-            font.family: Style.font.family
+            font.family: root.chromeFont
             font.pixelSize: 12
             color: root.foreground
             wrapMode: Text.Wrap
-            maximumLineCount: 2
+            maximumLineCount: 8
             elide: Text.ElideRight
           }
         }
         Button {
+          z: 2
           anchors.top: parent.top
           anchors.right: parent.right
           anchors.margins: 5
@@ -1277,45 +1409,52 @@ Item {
       Item {
         id: bubble
         z: 1
-        width: root.bubbleSize
-        height: root.bubbleSize
+        width: root.bubbleWidth
+        height: root.bubbleHeight
         x: overlayWindow.bubbleX
         y: overlayWindow.bubbleY
 
         Rectangle {
           anchors.fill: parent
-          radius: width / 2
-          color: bubbleHover.hovered ? root.alpha(root.background, 0.98) : root.alpha(root.background, 0.92)
+          visible: root.launcherStyle !== 5
+          radius: root.bubbleRadius
+          color: bubbleHover.hovered ? Qt.tint(root.launcherAccent, root.alpha(root.launcherText, 0.08)) : root.launcherAccent
           border.width: 2
-          border.color: root.attentionCount() > 0 ? root.success : root.alpha(root.gold, 0.82)
+          border.color: root.attentionCount() > 0 ? root.launcherSuccess : root.alpha(root.launcherBackground, 0.55)
 
           Text {
             anchors.centerIn: parent
-            text: "H"
-            color: root.gold
-            font.family: Style.font.family
-            font.pixelSize: 25
+            text: root.launcherStyle === 4 ? "herdr" : "H"
+            color: root.launcherText
+            font.family: root.chromeFont
+            font.pixelSize: root.bubbleHeight <= 32 ? 16 : 25
             font.bold: true
           }
+        }
+
+        WowLauncher {
+          anchors.fill: parent
+          visible: root.launcherStyle === 5
+          hovered: bubbleHover.hovered
         }
 
         Rectangle {
           visible: root.attentionCount() > 0
           width: Math.max(19, badgeText.implicitWidth + 8)
           height: 19
-          radius: 10
+          radius: root.cornerRadius
           anchors.right: parent.right
           anchors.top: parent.top
-          color: root.success
+          color: root.launcherSuccess
           border.width: 2
-          border.color: root.background
+          border.color: root.launcherBackground
 
           Text {
             id: badgeText
             anchors.centerIn: parent
             text: root.attentionCount() > 99 ? "99+" : String(root.attentionCount())
-            color: "#102317"
-            font.family: Style.font.family
+            color: root.launcherText
+            font.family: root.chromeFont
             font.pixelSize: 10
             font.bold: true
           }
@@ -1329,6 +1468,11 @@ Item {
         TapHandler {
           acceptedButtons: Qt.LeftButton
           onTapped: root.toggleOnScreen(overlayWindow.screenName)
+        }
+
+        TapHandler {
+          acceptedButtons: Qt.RightButton
+          onTapped: root.cycleLauncherStyle()
         }
 
         DragHandler {
@@ -1364,15 +1508,15 @@ Item {
         : block.kind === "context" ? "EARLIER CONTEXT" : ""
       if (block.kind === "tool") {
         var expanded = !!expandedTools[block.id]
-        result += '<p style="margin:12px 0;color:#a3b6a9"><a style="color:#a3b6a9" href="activity:'
+        result += '<p style="margin:12px 0;color:' + root.muted + '"><a style="color:' + root.muted + '" href="activity:'
           + block.id + '">' + (expanded ? '▾ ' : '▸ ') + block.summary + '</a></p>'
         if (expanded) result += block.html
       } else if (block.kind === "status") {
-        result += '<div style="margin:14px 0;color:#a3b6a9">' + block.html + '</div>'
+        result += '<div style="margin:14px 0;color:' + root.muted + '">' + block.html + '</div>'
       } else {
         result += '<table width="100%" cellspacing="0" cellpadding="10"'
           + (block.kind === "prompt" ? ' bgcolor="' + Qt.tint(root.panelFill, root.alpha(root.foreground, 0.12)) + '"' : '') + '><tr><td>'
-          + '<p style="margin:0 0 8px;color:#e8c67c;font-size:10px"><b>' + label + '</b></p>'
+          + '<p style="margin:0 0 8px;color:' + root.accent + ';font-size:10px"><b>' + label + '</b></p>'
           + block.html + '</td></tr></table><p style="margin:0;font-size:5px"><br></p>'
       }
     }
